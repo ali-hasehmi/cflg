@@ -1,6 +1,8 @@
+#include <ctype.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
@@ -27,9 +29,9 @@ typedef
 struct {
     flagtype_t type;
     void *dest;	 
-    char *usage;
+    const char *usage;
     char name;
-    char *name_long;
+    const char *name_long;
 } flag_t;
 
 typedef 
@@ -45,14 +47,23 @@ struct {
     bool parsed;	
     int narg; 		// number of arguments remaining after flags have been processed.
     char **args;	// non-flag arguments after flags have beeen processed.
+    const char *prog_name;    // name of the program
     map_t flags;    
 } cflg_flagset_t;
 
 
-int cflg_parse(int argc, char *argv[]);
-int cflg_flagset_parse(cflg_flagset_t* flgset, int argc, char *argv[]);
+void cflg_flgset_create(cflg_flagset_t* flgset);
+void cflg_flgset_destroy(cflg_flagset_t* flgset);
+// int  cflg_parse(int argc, char *argv[]);
+void cflg_flgset_int(cflg_flagset_t* flgset, int* p, char name, const char *name_long, const char *usage);
+void cflg_flgset_bool(cflg_flagset_t* flgset, bool* p, char name, const char *name_long, const char *usage);
+void cflg_flgset_string(cflg_flagset_t* flgset, char** p, char name, const char *name_long, const char *usage);
+void cflg_flgset_float(cflg_flagset_t* flgset, float* p, char name, const char *name_long, const char *usage);
 
+int  cflg_flagset_parse(cflg_flagset_t* flgset, int argc, char *argv[]);
 
+void map_create(map_t *m);
+void map_destroy(map_t *m);
 bool map_insert(map_t *m, const char* k,size_t len,flag_t* v);
 flag_t* map_find(map_t *m, const char* k, size_t len);
 
@@ -60,6 +71,7 @@ flag_t* map_find(map_t *m, const char* k, size_t len);
 #define PARSE_ARG_CONSUMED    1
 #define PARSE_ARG_NEEDED     -1
 #define PARSE_ARG_INVALID    -2
+#define PARSE_OPT_INVALID    -3
 
 int parse_bool(flag_t *f,const char *arg);
 int parse_int(flag_t *f,const char *arg);
@@ -75,13 +87,122 @@ int (*parse_handlers[])(flag_t *,const char *arg)= {
     [String] = parse_string,
 };
 
+void print_err(int err_code, const char *prog_name, bool is_short, const char * opt, size_t opt_len, const char *arg);
+
 void parseflg_long(cflg_flagset_t *flgset, char* first, char *second);
 void parseflg(cflg_flagset_t *fset, char *first, char *second);
+
+
+#ifdef CFLG_DEBUG 
+ #define debug(fmt, args...) fprintf(stderr, "DEBUG: %s:%d:%s(): " fmt, \
+    __FILE__, __LINE__, __func__, ##args)
+#else
+ #define debug(fmt, args...) /* Don't do anything in release builds */
+#endif
+
+const char *find_base(const char *path) {
+    for (int i = strlen(path) - 1; i >= 0 ; --i){
+	if (path[i] == '/' || path[i] == '\\'){
+	    debug("/ or \\ found at %d in %s\n", i,path);
+	    return path + i + 1;
+	}
+    }
+    return path;
+}
+void cflg_flgset_create(cflg_flagset_t* flgset) {
+    debug("start creating flagset\n");
+    memset(flgset, 0, sizeof (cflg_flagset_t));
+    map_create(&flgset->flags);
+    debug("end creating flagset\n");
+}
+
+void cflg_flgset_destroy(cflg_flagset_t* flgset) {
+    if (flgset->args != NULL) free(flgset->args);
+
+    for(int i = 0 ; i < flgset->flags.cap ; ++i){
+	if(flgset->flags.map[i] != NULL) free(flgset->flags.map[i]);
+    }
+    map_destroy(&flgset->flags);
+
+}
+
+flag_t* new_flag(flagtype_t ftype,void *dest, char name, const char *name_long, const char *usage) {
+    flag_t *f = (flag_t*)malloc(sizeof(flag_t));
+    if(f){
+	f->type = ftype;
+    	f->name_long = name_long;
+    	f->name = name;
+    	f->usage = usage;
+    	f->dest = dest;
+    }
+    return f;
+}
+
+void cflg_flgset_int(cflg_flagset_t* flgset, int* p, char name, const char *name_long, const char *usage) {
+    debug("start adding integer to flagset\n");
+    flag_t *f = new_flag(Int, p, name, name_long, usage);
+
+    // TODO: if name is not alphanumberic and name_long is NULL then we have a mem leak
+    // because cflg_flgset_destroy doesn't have an access to f
+    // potential solution: use a flag to check if 'f' is inserted in map or not
+    // if not free it
+    if (isalnum(name)) map_insert(&flgset->flags,&name,1,f);
+    if (name_long != NULL) map_insert(&flgset->flags,name_long,strlen(name_long),f);
+
+}
+
+void cflg_flgset_bool(cflg_flagset_t* flgset, bool* p, char name, const char *name_long, const char *usage) {
+    debug("start adding bool to flagset\n");
+    flag_t *f = new_flag(Bool, p, name, name_long, usage);
+
+    // TODO: if name is not alphanumberic and name_long is NULL then we have a mem leak
+    // because cflg_flgset_destroy doesn't have an access to f
+    // potential solution: use a flag to check if 'f' is inserted in map or not
+    // if not free it
+    if (isalnum(name)) map_insert(&flgset->flags,&name,1,f);
+    if (name_long != NULL) map_insert(&flgset->flags,name_long,strlen(name_long),f);
+}
+
+void cflg_flgset_float(cflg_flagset_t* flgset, float* p, char name, const char *name_long, const char *usage) {
+    debug("start adding bool to flagset\n");
+    flag_t *f = new_flag(Float, p, name, name_long, usage);
+
+    // TODO: if name is not alphanumberic and name_long is NULL then we have a mem leak
+    // because cflg_flgset_destroy doesn't have an access to f
+    // potential solution: use a flag to check if 'f' is inserted in map or not
+    // if not free it
+    if (isalnum(name)) map_insert(&flgset->flags,&name,1,f);
+    if (name_long != NULL) map_insert(&flgset->flags,name_long,strlen(name_long),f);
+}
+
+void cflg_flgset_string(cflg_flagset_t* flgset, char** p, char name, const char *name_long, const char *usage) {
+    debug("start adding bool to flagset\n");
+    flag_t *f = new_flag(String, p, name, name_long, usage);
+
+    // TODO: if name is not alphanumberic and name_long is NULL then we have a mem leak
+    // because cflg_flgset_destroy doesn't have an access to f
+    // potential solution: use a flag to check if 'f' is inserted in map or not
+    // if not free it
+    if (isalnum(name)) map_insert(&flgset->flags,&name,1,f);
+    if (name_long != NULL) map_insert(&flgset->flags,name_long,strlen(name_long),f);
+}
 
 int cflg_flagset_parse(cflg_flagset_t* fset, int argc, char *argv[]) {
 
 	if (fset->parsed) return 0;
     
+	// order:
+	// 1. PROGRAM_NAME macro
+	// 2. explicit name 
+	// 3. use executable name
+	#ifndef PROGRAM_NAME
+	    if (fset->prog_name == NULL)
+		fset->prog_name = find_base(argv[0]);
+	#else
+	    fset->prog_name = PROGRAM_NAME;
+	#endif
+	debug("prog_name set to %s\n", fset->prog_name);
+
 	fset->narg = 0;
 	fset->args = (char **) malloc(argc * sizeof(char*));
 	if (!fset->args) return -1;
@@ -102,8 +223,8 @@ int cflg_flagset_parse(cflg_flagset_t* fset, int argc, char *argv[]) {
 		if(len == 2) break; // -- => stop parsing flags
 	    
 		// search for '=' in flag
-		bool skip_next = false;
 		char *arg = strchr(argv[i],'=');
+		bool skip_next = false;
 		char *flag;
 		size_t flag_len;
 		if(arg == NULL) /* no '=' in flag */ {
@@ -117,8 +238,12 @@ int cflg_flagset_parse(cflg_flagset_t* fset, int argc, char *argv[]) {
 		    arg++;
 		}	
 		flag_t *f = map_find(&fset->flags, flag, flag_len);
-		if(f == NULL){
+		if( f == NULL || 
+		    f->name_long == NULL || 
+		    strncmp(f->name_long, flag, flag_len))
+		{
 		    // TODO: handle invalid flag error
+		    print_err(PARSE_OPT_INVALID, fset->prog_name, false, flag, flag_len, arg);
 		}	
 		int res = parse_handlers[f->type](f, arg);
 		switch(res){
@@ -131,6 +256,7 @@ int cflg_flagset_parse(cflg_flagset_t* fset, int argc, char *argv[]) {
 			break;
 		default:
 		    // TODO: handle argument flag errors
+		    print_err(res, fset->prog_name, false, flag, flag_len, arg);
 		    
 		}
 	    }
@@ -140,8 +266,12 @@ int cflg_flagset_parse(cflg_flagset_t* fset, int argc, char *argv[]) {
 		for(int j = 1; j < len; ++j) {
 		    char *flag = argv[i] + j;
 		    flag_t *f = map_find(&fset->flags, flag ,1);
-		    if (f == NULL){
+		    if (f == NULL || 
+			f->name == 0 ||
+			f->name != flag[0])	
+		    {
 			// TODO: Handle invalid flag error
+			print_err(PARSE_OPT_INVALID, fset->prog_name, true, flag, 1, NULL);
 		    }
 		    bool skip_next = false;
 		    char *arg =  argv[i] + j + 1;
@@ -149,7 +279,7 @@ int cflg_flagset_parse(cflg_flagset_t* fset, int argc, char *argv[]) {
 			arg = argv[i+1];
 			skip_next = true;
 		    }
-		    int res = parse_handlers[f->type](f, argv[i] + j + 1);
+		    int res = parse_handlers[f->type](f, arg);
 		    bool break_loop =false;
 		    switch(res){
 			case PARSE_ARG_CONSUMED:
@@ -162,7 +292,7 @@ int cflg_flagset_parse(cflg_flagset_t* fset, int argc, char *argv[]) {
 			    break;
 			default:
 			// TODO: handle argument flag errors
-		    
+			print_err(res, fset->prog_name, true, flag, 1, arg);
 		    }
 		    if (break_loop) break;
 		}
@@ -184,30 +314,60 @@ void parseflg(cflg_flagset_t *flgset, char *first, char *second) {
     }
 }
 
+uint32_t djb2_hash(const char *s, size_t cnt) {
+	uint32_t hash = 5381u;
+	for(size_t i = 0 ; i < cnt ; ++i){
+	    hash = ((hash << 5) + hash) + (uint8_t)s[i];
+	}
+	return hash;
+}
+
+void map_create(map_t *m) {
+    debug("start creating map\n");
+    m->len = 0;
+    m->hashFunc = djb2_hash;
+    m->cap = CFLG_MAP_SIZE;
+    m->map = (flag_t**)malloc( m->cap * sizeof(flag_t*) );
+    // TODO: proper error handling
+    assert(m->map);
+    memset(m->map, 0, m->cap);
+    debug("end creating map\n");
+
+}
+
+void map_destroy(map_t *m) {
+    free(m->map);
+}
+
 bool map_insert(map_t *m, const char* key, size_t len, flag_t* v) {
-    
+    debug("start adding flag to map");
     // panic if key is NULL
     assert(key != NULL);
 
     // if map is full, resize the backing array
     if(m->cap <= m->len) {
+	debug("map is reallocating\n");
 	m->map = realloc(m->map, (m->cap * 2 * sizeof(flag_t*)));
 	if(m->map == NULL) return false;
-	memset(m->map + m->cap ,NULL, m->cap);
+ 	memset(m->map + m->cap , 0, m->cap);
 	m->cap *= 2;
+	debug("reallocation end successfully\n");
     }
 
+    debug("calling hash function to hash key\n");
     // hash the key and find the location 
     uint32_t loc = m->hashFunc(key,len) % m->cap;
 
     // find an empty bucket
     while(m->map[loc] != NULL) {
 	// check if key has been inserted before
+	debug("checking if key has been inserted before\n");
 	if  ((len == 1 &&
 	    m->map[loc]->name == key[0]) ||
 	    ( m->map[loc]->name_long != NULL &&
 	    !strncmp(m->map[loc]->name_long, key, len))) 
 	{
+	    debug("flag has been inserted before\n");
 	    return false;
 	}
 	loc = (loc+1) % m->cap;
@@ -215,6 +375,8 @@ bool map_insert(map_t *m, const char* key, size_t len, flag_t* v) {
 
     m->map[loc] = v;
     m->len++;
+    debug("flag inserted into map successfully\n");
+    return true;
 }
 
 flag_t* map_find(map_t *m, const char* key, size_t len) {
@@ -305,6 +467,61 @@ int parse_string(flag_t *f,const char *arg) {
     }
 
     *(char**)f->dest = (char *)arg;
+    return PARSE_ARG_CONSUMED;
 }
 
+void print_err(int err_code,const char* prog_name, bool is_short, const char * opt, size_t opt_len, const char *arg) {
+    
+    // TODO: gnu seems to print different error message base on short or long format
+    // is it really necessary in this library?
+    // 
+    //
+    // TODO: Add '--' before long options 
+    char buff[1024];
+    const char *invalid_opt_err,
+	       *invalid_arg_err,
+	       *need_arg_err;
+    if (is_short){
+	invalid_opt_err = "%s: invalid option -- '%s'\n";
+	invalid_arg_err = "%s: invalid '%s' argument: '%s'\n";
+	need_arg_err = "%s: option requires an argument -- '%s'\n";
+	buff[0] = *opt;
+	buff[1] = '\0';
+    }
+    else {
+	invalid_opt_err = "%s: unrecognize option -- '%s'\n";
+	invalid_arg_err = "%s: invalid %s argument: '%s'\n";
+	need_arg_err    = "%s: option '%s' requires an argument\n";
+	memcpy(buff, opt, (1024 > opt_len ? opt_len: 1023));
+	buff[(1024 > opt_len ? opt_len: 1023)] = '\0';
+   }
 
+    switch (err_code) {
+
+	case PARSE_OPT_INVALID:
+		fprintf(stderr,
+		     invalid_opt_err,
+		     prog_name,
+		     buff);
+
+	    break;	
+	case PARSE_ARG_INVALID:
+		fprintf(stderr,
+	    	     invalid_arg_err,
+	    	     prog_name,
+	    	     buff,
+		     arg);
+	    break;
+
+	case PARSE_ARG_NEEDED:
+	    fprintf(stderr,
+		    need_arg_err,
+		    prog_name,
+		    buff);
+
+	    break;
+    }
+
+    // TODO: print usage then exit 
+    exit(1);
+}
