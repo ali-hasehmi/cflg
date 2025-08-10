@@ -7,8 +7,13 @@
 #include <string.h>
 #include <assert.h>
 
-#ifndef CFLG_MAP_SIZE
-#define CFLG_MAP_SIZE 32
+// default map initial capacity 
+#define DEFAULT_MAP_INIT_CAP 32
+
+// if hash map initial capacity is not explicitly set
+// set it to default value
+#ifndef CFLAG_MAP_INIT_CAP
+#define CFLAG_MAP_INIT_CAP DEFAULT_MAP_INIT_CAP
 #endif
 
 typedef 
@@ -242,7 +247,6 @@ int cflg_flagset_parse(cflg_flagset_t* fset, int argc, char *argv[]) {
 		    f->name_long == NULL || 
 		    strncmp(f->name_long, flag, flag_len))
 		{
-		    // TODO: handle invalid flag error
 		    print_err(PARSE_OPT_INVALID, fset->prog_name, false, flag, flag_len, arg);
 		}	
 		int res = parse_handlers[f->type](f, arg);
@@ -255,7 +259,6 @@ int cflg_flagset_parse(cflg_flagset_t* fset, int argc, char *argv[]) {
 		    case PARSE_ARG_REMAINED:
 			break;
 		default:
-		    // TODO: handle argument flag errors
 		    print_err(res, fset->prog_name, false, flag, flag_len, arg);
 		    
 		}
@@ -270,7 +273,6 @@ int cflg_flagset_parse(cflg_flagset_t* fset, int argc, char *argv[]) {
 			f->name == 0 ||
 			f->name != flag[0])	
 		    {
-			// TODO: Handle invalid flag error
 			print_err(PARSE_OPT_INVALID, fset->prog_name, true, flag, 1, NULL);
 		    }
 		    bool skip_next = false;
@@ -291,7 +293,6 @@ int cflg_flagset_parse(cflg_flagset_t* fset, int argc, char *argv[]) {
 			case PARSE_ARG_REMAINED:
 			    break;
 			default:
-			// TODO: handle argument flag errors
 			print_err(res, fset->prog_name, true, flag, 1, arg);
 		    }
 		    if (break_loop) break;
@@ -326,7 +327,7 @@ void map_create(map_t *m) {
     debug("start creating map\n");
     m->len = 0;
     m->hashFunc = djb2_hash;
-    m->cap = CFLG_MAP_SIZE;
+    m->cap = CFLAG_MAP_INIT_CAP;
     m->map = (flag_t**)malloc( m->cap * sizeof(flag_t*) );
     // TODO: proper error handling
     assert(m->map);
@@ -462,6 +463,7 @@ int parse_float(flag_t *f,const char *arg) {
 }
 
 int parse_string(flag_t *f,const char *arg) {
+    // TODO: *arg == '\0' might have better performance
     if ( arg == NULL || strlen(arg) == 0){
 	return PARSE_ARG_NEEDED;
     }
