@@ -24,9 +24,9 @@ enum {
     Float,
     UInt,
     Int64,
-    Uint64,
+    UInt64,
     Double,
-    UserDefined,
+    UserDefined, // TODO: this option will allow user to set custom parsing function
 } flagtype_t;
 
 
@@ -64,6 +64,10 @@ void cflg_flgset_int(cflg_flagset_t* flgset, int* p, char name, const char *name
 void cflg_flgset_bool(cflg_flagset_t* flgset, bool* p, char name, const char *name_long, const char *usage);
 void cflg_flgset_string(cflg_flagset_t* flgset, char** p, char name, const char *name_long, const char *usage);
 void cflg_flgset_float(cflg_flagset_t* flgset, float* p, char name, const char *name_long, const char *usage);
+void cflg_flgset_uint(cflg_flagset_t* flgset, unsigned* p, char name, const char *name_long, const char *usage);
+void cflg_flgset_int64(cflg_flagset_t* flgset, int64_t* p, char name, const char *name_long, const char *usage);
+void cflg_flgset_uint64(cflg_flagset_t* flgset, uint64_t* p, char name, const char *name_long, const char *usage);
+void cflg_flgset_double(cflg_flagset_t* flgset, double* p, char name, const char *name_long, const char *usage);
 
 int  cflg_flagset_parse(cflg_flagset_t* flgset, int argc, char *argv[]);
 
@@ -81,14 +85,20 @@ flag_t* map_find(map_t *m, const char* k, size_t len);
 int parse_bool(flag_t *f,const char *arg);
 int parse_int(flag_t *f,const char *arg);
 int parse_uint(flag_t *f,const char *arg);
+int parse_int64(flag_t *f,const char *arg);
+int parse_uint64(flag_t *f,const char *arg);
 int parse_float(flag_t *f,const char *arg);
+int parse_double(flag_t *f,const char *arg);
 int parse_string(flag_t *f,const char *arg);
 
 int (*parse_handlers[])(flag_t *,const char *arg)= {
     [Bool]   = parse_bool,
     [Int]    = parse_int,
     [UInt]   = parse_uint,
+    [Int64]  = parse_int64,
+    [UInt64] = parse_uint64,
     [Float]  = parse_float,
+    [Double] = parse_double,
     [String] = parse_string,
 };
 
@@ -156,6 +166,43 @@ void cflg_flgset_int(cflg_flagset_t* flgset, int* p, char name, const char *name
 
 }
 
+void cflg_flgset_uint(cflg_flagset_t* flgset, uint* p, char name, const char *name_long, const char *usage) {
+    debug("start adding unsigned integer to flagset\n");
+    flag_t *f = new_flag(UInt, p, name, name_long, usage);
+
+    // TODO: if name is not alphanumberic and name_long is NULL then we have a mem leak
+    // because cflg_flgset_destroy doesn't have an access to f
+    // potential solution: use a flag to check if 'f' is inserted in map or not
+    // if not free it
+    if (isalnum(name)) map_insert(&flgset->flags,&name,1,f);
+    if (name_long != NULL) map_insert(&flgset->flags,name_long,strlen(name_long),f);
+
+}
+
+void cflg_flgset_int64(cflg_flagset_t* flgset, int64_t* p, char name, const char *name_long, const char *usage) {
+    debug("start adding int64 to flagset\n");
+    flag_t *f = new_flag(Int64, p, name, name_long, usage);
+
+    // TODO: if name is not alphanumberic and name_long is NULL then we have a mem leak
+    // because cflg_flgset_destroy doesn't have an access to f
+    // potential solution: use a flag to check if 'f' is inserted in map or not
+    // if not free it
+    if (isalnum(name)) map_insert(&flgset->flags,&name,1,f);
+    if (name_long != NULL) map_insert(&flgset->flags,name_long,strlen(name_long),f);
+}
+
+void cflg_flgset_uint64(cflg_flagset_t* flgset, uint64_t* p, char name, const char *name_long, const char *usage) {
+    debug("start adding uint64 to flagset\n");
+    flag_t *f = new_flag(UInt64, p, name, name_long, usage);
+
+    // TODO: if name is not alphanumberic and name_long is NULL then we have a mem leak
+    // because cflg_flgset_destroy doesn't have an access to f
+    // potential solution: use a flag to check if 'f' is inserted in map or not
+    // if not free it
+    if (isalnum(name)) map_insert(&flgset->flags,&name,1,f);
+    if (name_long != NULL) map_insert(&flgset->flags,name_long,strlen(name_long),f);
+
+}
 void cflg_flgset_bool(cflg_flagset_t* flgset, bool* p, char name, const char *name_long, const char *usage) {
     debug("start adding bool to flagset\n");
     flag_t *f = new_flag(Bool, p, name, name_long, usage);
@@ -178,6 +225,19 @@ void cflg_flgset_float(cflg_flagset_t* flgset, float* p, char name, const char *
     // if not free it
     if (isalnum(name)) map_insert(&flgset->flags,&name,1,f);
     if (name_long != NULL) map_insert(&flgset->flags,name_long,strlen(name_long),f);
+}
+
+void cflg_flgset_double(cflg_flagset_t* flgset, double* p, char name, const char *name_long, const char *usage) {
+    debug("start adding bool to flagset\n");
+    flag_t *f = new_flag(Double, p, name, name_long, usage);
+
+    // TODO: if name is not alphanumberic and name_long is NULL then we have a mem leak
+    // because cflg_flgset_destroy doesn't have an access to f
+    // potential solution: use a flag to check if 'f' is inserted in map or not
+    // if not free it
+    if (isalnum(name)) map_insert(&flgset->flags,&name,1,f);
+    if (name_long != NULL) map_insert(&flgset->flags,name_long,strlen(name_long),f);
+
 }
 
 void cflg_flgset_string(cflg_flagset_t* flgset, char** p, char name, const char *name_long, const char *usage) {
@@ -416,13 +476,13 @@ int parse_bool(flag_t *f, const char *arg) {
 int parse_int(flag_t *f,const char *arg) {
     // TODO: instead of "strlen(arg) == 0" use arg[0] == '\0'
     if ( arg == NULL || strlen(arg) == 0){
-	return PARSE_ARG_NEEDED;
+        return PARSE_ARG_NEEDED;
     }
 
     char *endptr;
-    long int n = strtol(arg, &endptr, 0);
+    int n = strtol(arg, &endptr, 0);
     if ( *endptr != '\0' ){
-	return PARSE_ARG_INVALID;
+        return PARSE_ARG_INVALID;
     }
 
     *(int*)f->dest = n;
@@ -432,32 +492,80 @@ int parse_int(flag_t *f,const char *arg) {
 
 int parse_uint(flag_t *f,const char *arg) {
     if ( arg == NULL || strlen(arg) == 0){
-	return PARSE_ARG_NEEDED;
+        return PARSE_ARG_NEEDED;
     }
 
     char *endptr;
-    unsigned long int n = strtoul(arg, &endptr, 0);
+    uint n = strtoul(arg, &endptr, 0);
     if ( *endptr != '\0' ){
-	return PARSE_ARG_INVALID;
+        return PARSE_ARG_INVALID;
     }
 
-    *(unsigned int*)f->dest = n;
+    *(uint *)f->dest = n;
+
+    return PARSE_ARG_CONSUMED;
+}
+
+int parse_int64(flag_t *f,const char *arg) {
+    if ( arg == NULL || strlen(arg) == 0){
+        return PARSE_ARG_NEEDED;
+    }
+
+    char *endptr;
+    int64_t n = strtoll(arg, &endptr, 0);
+    if ( *endptr != '\0' ){
+        return PARSE_ARG_INVALID;
+    }
+
+    *(int64_t*)f->dest = n;
+
+    return PARSE_ARG_CONSUMED;
+}
+
+int parse_uint64(flag_t *f,const char *arg) {
+    if ( arg == NULL || strlen(arg) == 0){
+        return PARSE_ARG_NEEDED;
+    }
+
+    char *endptr;
+    uint64_t n = strtoull(arg, &endptr, 0);
+    if ( *endptr != '\0' ){
+        return PARSE_ARG_INVALID;
+    }
+
+    *(uint64_t*)f->dest = n;
 
     return PARSE_ARG_CONSUMED;
 }
 
 int parse_float(flag_t *f,const char *arg) {
     if ( arg == NULL  || strlen(arg) == 0 ){
-	return PARSE_ARG_NEEDED;
+        return PARSE_ARG_NEEDED;
     }
 
     char *endptr;
     float n = strtof(arg, &endptr);
     if ( *endptr != '\0' ){
-	return PARSE_ARG_INVALID;
+        return PARSE_ARG_INVALID;
     }
 
     *(float*)f->dest = n;
+
+    return PARSE_ARG_CONSUMED;
+}
+
+int parse_double(flag_t *f,const char *arg) {
+    if ( arg == NULL  || strlen(arg) == 0 ){
+        return PARSE_ARG_NEEDED;
+    }
+
+    char *endptr;
+    double n = strtod(arg, &endptr);
+    if ( *endptr != '\0' ){
+        return PARSE_ARG_INVALID;
+    }
+
+    *(double*)f->dest = n;
 
     return PARSE_ARG_CONSUMED;
 }
