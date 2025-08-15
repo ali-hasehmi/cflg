@@ -3,7 +3,7 @@
 #include <stdlib.h>
 
 #define PROGRAM_NAME "ping"
-// #define CFLG_DEBUG
+#define CFLG_DEBUG
 #include "../cflg.h"
 
 #define btoa(x) ((x) ? "true" : "false")
