@@ -1,21 +1,11 @@
 #include <ctype.h>
-#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include <sys/select.h>
 
-// default map initial capacity 
-#define DEFAULT_MAP_INIT_CAP 32
-
-// if hash map initial capacity is not explicitly set
-// set it to default value
-#ifndef CFLAG_MAP_INIT_CAP
-#define CFLAG_MAP_INIT_CAP DEFAULT_MAP_INIT_CAP
-#endif
 
 #ifndef CFLAG_FLAG_ARENA_INIT_CAP
 #define CFLAG_FLAG_ARENA_INIT_CAP 10
@@ -66,7 +56,6 @@ struct {
     int narg; 		// number of arguments remaining after flags have been processed.
     char **args;	// non-flag arguments after flags have beeen processed.
     const char *prog_name;    // name of the program
-    map_t flags;    
     flag_arena_t arena;
 } cflg_flagset_t;
 
@@ -102,7 +91,7 @@ cflg_flgset_double(cflg_flagset_t* flgset, double* p, char name,
 
 int  cflg_flagset_parse(cflg_flagset_t* flgset, int argc, char *argv[]);
 
-void map_create(map_t *m);
+void map_create_from_arena(map_t *m, flag_arena_t *a);
 void map_destroy(map_t *m);
 bool map_insert(map_t *m, const char* k,size_t len,flag_t* v);
 flag_t* map_find(map_t *m, const char* k, size_t len);
@@ -110,6 +99,8 @@ flag_t* map_find(map_t *m, const char* k, size_t len);
 void flag_arena_init(flag_arena_t *arena);
 flag_t* flag_arena_alloc(flag_arena_t *arena);
 void flag_arena_free(flag_arena_t *arena);
+size_t flag_arena_len(flag_arena_t *arena);
+flag_t* flag_arena_at(flag_arena_t *arena, size_t index);
 
 #define PARSE_ARG_REMAINED    0 
 #define PARSE_ARG_CONSUMED    1
@@ -117,7 +108,7 @@ void flag_arena_free(flag_arena_t *arena);
 #define PARSE_ARG_INVALID    -2
 #define PARSE_OPT_INVALID    -3
 
-#define STRLEN(s) ( s ? strlen(s) : 0 )
+#define STRLEN(s) ( (s) ? (strlen(s)) : (0) )
 
 #define ISHELP(f, l) ( l == 1 && f[0] == 'h') || \
                      ( l == strlen("help") && !memcmp(f, "help", l) ) 
@@ -169,18 +160,17 @@ void cflg_flgset_create(cflg_flagset_t* flgset) {
     debug("start creating flagset\n");
     memset(flgset, 0, sizeof (cflg_flagset_t));
     flag_arena_init(&flgset->arena);
-    map_create(&flgset->flags);
     debug("end creating flagset\n");
 }
 
 void cflg_flgset_destroy(cflg_flagset_t* flgset) {
     if (flgset->args != NULL) free(flgset->args);
     flag_arena_free(&flgset->arena);
-    map_destroy(&flgset->flags);
 }
 
 flag_t* new_flag(flag_arena_t *arena,flagtype_t ftype,void *dest, char name, const char *name_long, const char *usage) {
-    flag_t *f =  flag_arena_alloc(arena);
+    if (name != 0 && !isalnum(name)) return NULL;
+    flag_t *f = flag_arena_alloc(arena);
     if(f){
         memset(f, 0, sizeof(flag_t));
         f->type = ftype;
@@ -196,15 +186,8 @@ void
 cflg_flgset_int(cflg_flagset_t* flgset, int* p, char name, 
                 const char *name_long, const char *arg_name, const char *usage) {
     debug("start adding integer to flagset\n");
-    flag_t *f = new_flag(&flgset->arena,Int, p, name, name_long, usage);
+    flag_t *f = new_flag(&flgset->arena, Int, p, name, name_long, usage);
     f->arg_name = arg_name ? arg_name : "int";
-
-    // TODO: if name is not alphanumberic and name_long is NULL then we have a mem leak
-    // because cflg_flgset_destroy doesn't have an access to f
-    // potential solution: use a flag to check if 'f' is inserted in map or not
-    // if not free it
-    if (isalnum(name)) map_insert(&flgset->flags,&name,1,f);
-    if (name_long != NULL) map_insert(&flgset->flags,name_long,strlen(name_long),f);
 
 }
 
@@ -215,13 +198,6 @@ cflg_flgset_uint(cflg_flagset_t* flgset, unsigned* p, char name,
     flag_t *f = new_flag(&flgset->arena,UInt, p, name, name_long, usage); 
     f->arg_name = arg_name ? arg_name : "uint";
 
-    // TODO: if name is not alphanumberic and name_long is NULL then we have a mem leak
-    // because cflg_flgset_destroy doesn't have an access to f
-    // potential solution: use a flag to check if 'f' is inserted in map or not
-    // if not free it
-    if (isalnum(name)) map_insert(&flgset->flags,&name,1,f);
-    if (name_long != NULL) map_insert(&flgset->flags,name_long,strlen(name_long),f);
-
 }
 
 void
@@ -230,13 +206,6 @@ cflg_flgset_int64(cflg_flagset_t* flgset, int64_t* p, char name,
     debug("start adding int64 to flagset\n");
     flag_t *f = new_flag(&flgset->arena,Int64, p, name, name_long, usage);
     f->arg_name = arg_name ? arg_name : "int64";
-
-    // TODO: if name is not alphanumberic and name_long is NULL then we have a mem leak
-    // because cflg_flgset_destroy doesn't have an access to f
-    // potential solution: use a flag to check if 'f' is inserted in map or not
-    // if not free it
-    if (isalnum(name)) map_insert(&flgset->flags,&name,1,f);
-    if (name_long != NULL) map_insert(&flgset->flags,name_long,strlen(name_long),f);
 }
 
 void 
@@ -246,25 +215,12 @@ cflg_flgset_uint64(cflg_flagset_t* flgset, uint64_t* p, char name,
     flag_t *f = new_flag(&flgset->arena,UInt64, p, name, name_long, usage);
     f->arg_name = arg_name ? arg_name : "uint64";
 
-    // TODO: if name is not alphanumberic and name_long is NULL then we have a mem leak
-    // because cflg_flgset_destroy doesn't have an access to f
-    // potential solution: use a flag to check if 'f' is inserted in map or not
-    // if not free it
-    if (isalnum(name)) map_insert(&flgset->flags,&name,1,f);
-    if (name_long != NULL) map_insert(&flgset->flags,name_long,strlen(name_long),f);
-
 }
 void cflg_flgset_bool(cflg_flagset_t* flgset, bool* p, char name, const char *name_long, const char *usage) {
     debug("start adding bool to flagset\n");
     flag_t *f = new_flag(&flgset->arena,Bool, p, name, name_long, usage);
 
-    // TODO: if name is not alphanumberic and name_long is NULL then we have a mem leak
-    // because cflg_flgset_destroy doesn't have an access to f
-    // potential solution: use a flag to check if 'f' is inserted in map or not
-    // if not free it
-    if (isalnum(name)) map_insert(&flgset->flags,&name,1,f);
-    if (name_long != NULL) map_insert(&flgset->flags,name_long,strlen(name_long),f);
-}
+   }
 
 void 
 cflg_flgset_float(cflg_flagset_t* flgset, float* p, char name,
@@ -272,12 +228,6 @@ cflg_flgset_float(cflg_flagset_t* flgset, float* p, char name,
     debug("start adding bool to flagset\n");
     flag_t *f = new_flag(&flgset->arena,Float, p, name, name_long, usage);
     f->arg_name = arg_name ? arg_name : "float";
-    // TODO: if name is not alphanumberic and name_long is NULL then we have a mem leak
-    // because cflg_flgset_destroy doesn't have an access to f
-    // potential solution: use a flag to check if 'f' is inserted in map or not
-    // if not free it
-    if (isalnum(name)) map_insert(&flgset->flags,&name,1,f);
-    if (name_long != NULL) map_insert(&flgset->flags,name_long,strlen(name_long),f);
 }
 
 void
@@ -286,13 +236,6 @@ cflg_flgset_double(cflg_flagset_t* flgset, double* p, char name,
     debug("start adding bool to flagset\n");
     flag_t *f = new_flag(&flgset->arena,Double, p, name, name_long, usage);
     f->arg_name = arg_name ? arg_name : "double";
-    // TODO: if name is not alphanumberic and name_long is NULL then we have a mem leak
-    // because cflg_flgset_destroy doesn't have an access to f
-    // potential solution: use a flag to check if 'f' is inserted in map or not
-    // if not free it
-    if (isalnum(name)) map_insert(&flgset->flags,&name,1,f);
-    if (name_long != NULL) map_insert(&flgset->flags,name_long,strlen(name_long),f);
-
 }
 
 void
@@ -302,17 +245,14 @@ cflg_flgset_string(cflg_flagset_t* flgset, char** p, char name,
     flag_t *f = new_flag(&flgset->arena,String, p, name, name_long, usage);
     f->arg_name = arg_name ? arg_name : "string";
 
-    // TODO: if name is not alphanumberic and name_long is NULL then we have a mem leak
-    // because cflg_flgset_destroy doesn't have an access to f
-    // potential solution: use a flag to check if 'f' is inserted in map or not
-    // if not free it
-    if (isalnum(name)) map_insert(&flgset->flags,&name,1,f);
-    if (name_long != NULL) map_insert(&flgset->flags,name_long,strlen(name_long),f);
-}
+    }
 
 int cflg_flagset_parse(cflg_flagset_t* fset, int argc, char *argv[]) {
 
 	if (fset->parsed) return 0;
+    
+    map_t flags; 
+    map_create_from_arena(&flags, &fset->arena);
     
 	// order:
 	// 1. PROGRAM_NAME macro
@@ -328,7 +268,11 @@ int cflg_flagset_parse(cflg_flagset_t* fset, int argc, char *argv[]) {
 
 	fset->narg = 0;
 	fset->args = (char **) malloc(argc * sizeof(char*));
-	if (!fset->args) return -1;
+	if (!fset->args) {
+        map_destroy(&flags);
+        return -1;
+    }
+
 	int i = 0;
 	for( ; i < argc; ++i){
 
@@ -344,7 +288,8 @@ int cflg_flagset_parse(cflg_flagset_t* fset, int argc, char *argv[]) {
 	    // if it's a long flag
 	    if(argv[i][1] == '-') {
 		if(len == 2) break; // -- => stop parsing flags
-	    
+	    debug("long flag is detected\n");
+
 		// search for '=' in flag
 		char *arg = strchr(argv[i],'=');
 		bool skip_next = false;
@@ -363,15 +308,19 @@ int cflg_flagset_parse(cflg_flagset_t* fset, int argc, char *argv[]) {
 
         // if flag is "--help" print help
         if (ISHELP(flag, flag_len)) {
+                debug("--help detected printing flags and exiting\n");
+                map_destroy(&flags);
                 print_flags(&fset->arena);
                 exit(0);
         }
 
-		flag_t *f = map_find(&fset->flags, flag, flag_len);
+        debug("looking up the hashtable for flag\n");
+		flag_t *f = map_find(&flags, flag, flag_len);
 		if( f == NULL || 
 		    f->name_long == NULL || 
 		    strncmp(f->name_long, flag, flag_len))
 		{
+            map_destroy(&flags);
 		    print_err(PARSE_OPT_INVALID, fset->prog_name, false, flag, flag_len, arg);
 		}	
 		int res = parse_handlers[f->type](f, arg);
@@ -384,7 +333,8 @@ int cflg_flagset_parse(cflg_flagset_t* fset, int argc, char *argv[]) {
 		    case PARSE_ARG_REMAINED:
 			break;
 		default:
-		    print_err(res, fset->prog_name, false, flag, flag_len, arg);
+            map_destroy(&flags);
+            print_err(res, fset->prog_name, false, flag, flag_len, arg);
 		    
 		}
 	    }
@@ -394,14 +344,16 @@ int cflg_flagset_parse(cflg_flagset_t* fset, int argc, char *argv[]) {
 		for(int j = 1; j < len; ++j) {
 		    char *flag = argv[i] + j;
             if(ISHELP(flag, 1)) {
+                map_destroy(&flags);
                     print_flags(&fset->arena);
                     exit(0);
             }
-		    flag_t *f = map_find(&fset->flags, flag ,1);
+		    flag_t *f = map_find(&flags, flag ,1);
 		    if (f == NULL || 
                 f->name == 0 ||
                 f->name != flag[0])	
 		    {
+            map_destroy(&flags);
 			print_err(PARSE_OPT_INVALID, fset->prog_name, true, flag, 1, NULL);
 		    }
 		    bool skip_next = false;
@@ -422,6 +374,7 @@ int cflg_flagset_parse(cflg_flagset_t* fset, int argc, char *argv[]) {
 			case PARSE_ARG_REMAINED:
 			    break;
 			default:
+            map_destroy(&flags);
 			print_err(res, fset->prog_name, true, flag, 1, arg);
 		    }
 		    if (break_loop) break;
@@ -434,6 +387,7 @@ int cflg_flagset_parse(cflg_flagset_t* fset, int argc, char *argv[]) {
 		fset->narg++;
 	}
 
+    map_destroy(&flags);
 	fset->parsed = true;
 	return 0;
 }
@@ -452,17 +406,23 @@ uint32_t djb2_hash(const char *s, size_t cnt) {
 	return hash;
 }
 
-void map_create(map_t *m) {
-    debug("start creating map\n");
-    m->len = 0;
-    m->hashFunc = djb2_hash;
-    m->cap = CFLAG_MAP_INIT_CAP;
-    m->map = (flag_t**)malloc( m->cap * sizeof(flag_t*) );
-    // TODO: proper error handling
-    assert(m->map);
-    memset(m->map, 0, m->cap);
-    debug("end creating map\n");
 
+
+void map_create_from_arena(map_t *m, flag_arena_t *a) {
+    size_t arena_len = flag_arena_len(a);
+    m->map = (flag_t**) malloc( 2 * arena_len * sizeof(flag_t*));
+    // TODO: implement proper error handling
+    assert(m->map);
+    memset(m->map, 0, 2 * arena_len * sizeof(flag_t*) );
+    m->len = 0;
+    m->cap = 2 * arena_len;
+    m->hashFunc = djb2_hash;
+
+    for(int i = 0; i < arena_len; ++i){
+        flag_t *f = flag_arena_at(a, i);
+        if (f->name) map_insert(m, &f->name, 1, f);
+        if (f->name_long) map_insert(m, f->name_long, strlen(f->name_long), f);
+    }
 }
 
 void map_destroy(map_t *m) {
@@ -470,18 +430,14 @@ void map_destroy(map_t *m) {
 }
 
 bool map_insert(map_t *m, const char* key, size_t len, flag_t* v) {
-    debug("start adding flag to map");
+    debug("start adding flag to map\n");
     // panic if key is NULL
     assert(key != NULL);
 
     // if map is full, resize the backing array
     if(m->cap <= m->len) {
-	debug("map is reallocating\n");
-	m->map = realloc(m->map, (m->cap * 2 * sizeof(flag_t*)));
-	if(m->map == NULL) return false;
- 	memset(m->map + m->cap , 0, m->cap);
-	m->cap *= 2;
-	debug("reallocation end successfully\n");
+        debug("map is full!\n");
+        return false;
     }
 
     debug("calling hash function to hash key\n");
@@ -527,10 +483,12 @@ flag_t* map_find(map_t *m, const char* key, size_t len) {
 	    ( m->map[loc]->name_long != NULL &&
 	    !strncmp(m->map[loc]->name_long, key, len))) 
 	{
+        debug("%c key found\n", *key);
 	    return m->map[loc];
 	}
 	loc = (loc+1) % m->cap;
     }
+    debug("%c key not found\n", *key);
     return NULL;
 }
 
@@ -553,6 +511,17 @@ void flag_arena_free(flag_arena_t *arena) {
     free(arena->mem);
     arena->mem = NULL;
     arena->used = arena->cap= 0;
+}
+
+size_t flag_arena_len(flag_arena_t *arena) {
+    return arena->used;
+}
+
+flag_t* flag_arena_at(flag_arena_t *arena, size_t index) {
+    if (index < arena->used) {
+        return &arena->mem[index];
+    }
+    return NULL;
 }
 
 int parse_bool(flag_t *f, const char *arg) {
