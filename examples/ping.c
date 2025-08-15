@@ -4,6 +4,7 @@
 
 #define PROGRAM_NAME "ping"
 #define CFLG_DEBUG
+#define CFLAG_FLAG_ARENA_INIT_CAP 4
 #include "../cflg.h"
 
 #define btoa(x) ((x) ? "true" : "false")
