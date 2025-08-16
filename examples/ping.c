@@ -4,7 +4,7 @@
 
 #define PROGRAM_NAME "ping"
 #define CFLG_DEBUG
-#define CFLAG_FLAG_ARENA_INIT_CAP 4
+#define CFLG_IMPLEMENTATION
 #include "../cflg.h"
 
 #define btoa(x) ((x) ? "true" : "false")
@@ -22,7 +22,7 @@ main(int argc, char * argv[]) {
     uint ident = rand() % UINT16_MAX;
     double timeout = 0.2; // => 200 ms
 
-	cflg_flagset_t fset;
+	cflg_flgset_t fset;
 	cflg_flgset_create(&fset);
 
 	cflg_flgset_int64(&fset,&count, 'c', "count",  "NUM", "number of packets to send");
