@@ -3,8 +3,8 @@
 #include <stdlib.h>
 
 #define PROGRAM_NAME "ping"
-#define CFLG_DEBUG
-#define CFLG_IMPLEMENTATION
+//#define CFLG_DEBUG
+//#define CFLG_IMPLEMENTATION
 #include "../cflg.h"
 
 #define btoa(x) ((x) ? "true" : "false")
@@ -22,20 +22,20 @@ main(int argc, char * argv[]) {
     uint ident = rand() % UINT16_MAX;
     double timeout = 0.2; // => 200 ms
 
-	cflg_flgset_t fset;
-	cflg_flgset_create(&fset);
+	flgset_t fset;
+	flgset_create(&fset);
 
-	cflg_flgset_int64(&fset,&count, 'c', "count",  "NUM", "number of packets to send");
-	cflg_flgset_int(&fset,&mark, 'm', "mark", "MARK", "set fwmark");
-	cflg_flgset_bool(&fset,&precision, '3', NULL,"RTT precision do not round up");
-	cflg_flgset_bool(&fset,&ipv4_only, '4', NULL,"use only ipv4");
-	cflg_flgset_bool(&fset,&ipv6_only, '6', NULL, "use only ipv6");
-	cflg_flgset_uint(&fset,&ident, 0, "identifier","NUM", "set the identifier");
-	cflg_flgset_float(&fset,&interval, 'i', NULL, "TIME", "send packets with this interval");
-	cflg_flgset_double(&fset,&timeout, 'W', "timeout", NULL, "timeout for waiting for a packet");
-	cflg_flgset_string(&fset,&interface, 'I', "interface", NULL, "mend packets through this interface");
+	flgset_int64(&fset,&count, 'c', "count",  "NUM", "number of packets to send");
+	flgset_int(&fset,&mark, 'm', "mark", "MARK", "set fwmark");
+	flgset_bool(&fset,&precision, '3', NULL,"RTT precision do not round up");
+	flgset_bool(&fset,&ipv4_only, '4', NULL,"use only ipv4");
+	flgset_bool(&fset,&ipv6_only, '6', NULL, "use only ipv6");
+	flgset_uint(&fset,&ident, 0, "identifier","NUM", "set the identifier");
+	flgset_float(&fset,&interval, 'i', NULL, "TIME", "send packets with this interval");
+	flgset_double(&fset,&timeout, 'W', "timeout", NULL, "timeout for waiting for a packet");
+	flgset_string(&fset,&interface, 'I', "interface", NULL, "mend packets through this interface");
 
-	cflg_flagset_parse(&fset, argc, argv);
+	flgset_parse(&fset, argc, argv);
 
 	printf (
         "count: %ld\n"
