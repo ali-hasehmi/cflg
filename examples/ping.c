@@ -4,7 +4,7 @@
 
 #define PROGRAM_NAME "ping"
 //#define CFLG_DEBUG
-//#define CFLG_IMPLEMENTATION
+#define CFLG_IMPLEMENTATION
 #include "../cflg.h"
 
 #define btoa(x) ((x) ? "true" : "false")
