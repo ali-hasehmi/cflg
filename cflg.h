@@ -19,35 +19,22 @@
 #endif
 
 #ifndef CFLG_NO_SHORT_NAMES
-#define flgset_t       cflg_flgset_t
-#define flgset_create  cflg_flgset_create
+#define flgset_t cflg_flgset_t
+#define flgset_create cflg_flgset_create
 #define flgset_destroy cflg_flgset_destroy
-#define flgset_parse   cflg_flgset_parse
-#define flgset_int     cflg_flgset_int 
-#define flgset_uint    cflg_flgset_uint  
-#define flgset_int64   cflg_flgset_int64 
-#define flgset_uint64  cflg_flgset_uint64
-#define flgset_string  cflg_flgset_string
-#define flgset_bool    cflg_flgset_bool
-#define flgset_float   cflg_flgset_float
-#define flgset_double  cflg_flgset_double
+#define flgset_parse cflg_flgset_parse
+#define flgset_int cflg_flgset_int
+#define flgset_uint cflg_flgset_uint
+#define flgset_int64 cflg_flgset_int64
+#define flgset_uint64 cflg_flgset_uint64
+#define flgset_string cflg_flgset_string
+#define flgset_bool cflg_flgset_bool
+#define flgset_float cflg_flgset_float
+#define flgset_double cflg_flgset_double
 #endif
 
-typedef enum {
-  Bool,
-  Int,
-  String,
-  Float,
-  UInt,
-  Int64,
-  UInt64,
-  Double,
-  UserDefined, // TODO: this option will allow user to set custom parsing
-               // function
-} cflag_flgtype_t;
-
-typedef struct {
-  cflag_flgtype_t type;
+typedef struct cflg_flg {
+  int (*parser)(struct cflg_flg *, const char *);
   void *dest;
   const char *usage;
   const char *arg_name;
@@ -116,11 +103,11 @@ int cflg_flgset_parse(cflg_flgset_t *flgset, int argc, char *argv[]);
 #endif // CFLG_H_INCLUDE
 
 #ifdef CFLG_IMPLEMENTATION
-// ******                                  ******
-// ******                                  ******
-// ******   IMPLEMENTATION SECTION START   ******
-// ******                                  ******
-// ******                                  ******
+//  ******                                  ******
+//  ******                                  ******
+//  ******   IMPLEMENTATION SECTION START   ******
+//  ******                                  ******
+//  ******                                  ******
 
 void cflg_map_create_from_arena(cflg_map_t *m, cflg_flg_arena_t *a);
 void cflg_map_destroy(cflg_map_t *m);
@@ -153,13 +140,6 @@ int cflg_parse_uint64(cflg_flg_t *f, const char *arg);
 int cflg_parse_float(cflg_flg_t *f, const char *arg);
 int cflg_parse_double(cflg_flg_t *f, const char *arg);
 int cflg_parse_string(cflg_flg_t *f, const char *arg);
-
-int (*parse_handlers[])(cflg_flg_t *, const char *arg) = {
-    [Bool] = cflg_parse_bool,     [Int] = cflg_parse_int,
-    [UInt] = cflg_parse_uint,     [Int64] = cflg_parse_int64,
-    [UInt64] = cflg_parse_uint64, [Float] = cflg_parse_float,
-    [Double] = cflg_parse_double, [String] = cflg_parse_string,
-};
 
 void cflg_print_flags(cflg_flg_arena_t *flags);
 void cflg_print_err(int err_code, const char *prog_name, bool is_short,
@@ -196,15 +176,16 @@ void cflg_flgset_destroy(cflg_flgset_t *flgset) {
   cflg_flg_arena_delete(flgset->arena);
 }
 
-cflg_flg_t *cflg_new_flag(cflg_flg_arena_t *arena, cflag_flgtype_t ftype,
-                          void *dest, char name, const char *name_long,
+cflg_flg_t *cflg_new_flag(cflg_flg_arena_t *arena,
+                          int (*parser)(cflg_flg_t *, const char *), void *dest,
+                          char name, const char *name_long,
                           const char *arg_name, const char *usage) {
   if (name != 0 && !isalnum(name))
     return NULL;
   cflg_flg_t *f = cflg_flg_arena_alloc(arena);
   if (f) {
     memset(f, 0, sizeof(cflg_flg_t));
-    f->type = ftype;
+    f->parser = parser;
     f->name_long = name_long;
     f->name = name;
     f->usage = usage;
@@ -218,45 +199,49 @@ void cflg_flgset_int(cflg_flgset_t *flgset, int *p, char name,
                      const char *name_long, const char *arg_name,
                      const char *usage) {
   debug("start adding integer to flagset\n");
-  cflg_flg_t *f = cflg_new_flag(flgset->arena, Int, p, name, name_long,
-                                CFLG_FALLBACK(arg_name, "int"), usage);
+  cflg_flg_t *f =
+      cflg_new_flag(flgset->arena, cflg_parse_int, p, name, name_long,
+                    CFLG_FALLBACK(arg_name, "int"), usage);
 }
 
 void cflg_flgset_uint(cflg_flgset_t *flgset, unsigned *p, char name,
                       const char *name_long, const char *arg_name,
                       const char *usage) {
   debug("start adding unsigned integer to flagset\n");
-  cflg_flg_t *f = cflg_new_flag(flgset->arena, UInt, p, name, name_long,
-                                CFLG_FALLBACK(arg_name, "uint"), usage);
+  cflg_flg_t *f =
+      cflg_new_flag(flgset->arena, cflg_parse_uint, p, name, name_long,
+                    CFLG_FALLBACK(arg_name, "uint"), usage);
 }
 
 void cflg_flgset_int64(cflg_flgset_t *flgset, int64_t *p, char name,
                        const char *name_long, const char *arg_name,
                        const char *usage) {
   debug("start adding int64 to flagset\n");
-  cflg_flg_t *f = cflg_new_flag(flgset->arena, Int64, p, name, name_long,
-                                CFLG_FALLBACK(arg_name, "int64"), usage);
+  cflg_flg_t *f =
+      cflg_new_flag(flgset->arena, cflg_parse_int64, p, name, name_long,
+                    CFLG_FALLBACK(arg_name, "int64"), usage);
 }
 
 void cflg_flgset_uint64(cflg_flgset_t *flgset, uint64_t *p, char name,
                         const char *name_long, const char *arg_name,
                         const char *usage) {
   debug("start adding uint64 to flagset\n");
-  cflg_flg_t *f = cflg_new_flag(flgset->arena, UInt64, p, name, name_long,
-                                CFLG_FALLBACK(arg_name, "uint64"), usage);
+  cflg_flg_t *f =
+      cflg_new_flag(flgset->arena, cflg_parse_uint64, p, name, name_long,
+                    CFLG_FALLBACK(arg_name, "uint64"), usage);
 }
 void cflg_flgset_bool(cflg_flgset_t *flgset, bool *p, char name,
                       const char *name_long, const char *usage) {
   debug("start adding bool to flagset\n");
-  cflg_flg_t *f =
-      cflg_new_flag(flgset->arena, Bool, p, name, name_long, NULL, usage);
+  cflg_flg_t *f = cflg_new_flag(flgset->arena, cflg_parse_bool, p, name,
+                                name_long, NULL, usage);
 }
 
 void cflg_flgset_float(cflg_flgset_t *flgset, float *p, char name,
                        const char *name_long, const char *arg_name,
                        const char *usage) {
   debug("start adding bool to flagset\n");
-  cflg_flg_t *f = cflg_new_flag(flgset->arena, Float, p, name, name_long,
+  cflg_flg_t *f = cflg_new_flag(flgset->arena, cflg_parse_float, p, name, name_long,
                                 CFLG_FALLBACK(arg_name, "float"), usage);
 }
 
@@ -264,7 +249,7 @@ void cflg_flgset_double(cflg_flgset_t *flgset, double *p, char name,
                         const char *name_long, const char *arg_name,
                         const char *usage) {
   debug("start adding bool to flagset\n");
-  cflg_flg_t *f = cflg_new_flag(flgset->arena, Double, p, name, name_long,
+  cflg_flg_t *f = cflg_new_flag(flgset->arena, cflg_parse_double, p, name, name_long,
                                 CFLG_FALLBACK(arg_name, "double"), usage);
 }
 
@@ -272,7 +257,7 @@ void cflg_flgset_string(cflg_flgset_t *flgset, char **p, char name,
                         const char *name_long, const char *arg_name,
                         const char *usage) {
   debug("start adding bool to flagset\n");
-  cflg_flg_t *f = cflg_new_flag(flgset->arena, String, p, name, name_long,
+  cflg_flg_t *f = cflg_new_flag(flgset->arena, cflg_parse_string, p, name, name_long,
                                 CFLG_FALLBACK(arg_name, "string"), usage);
 }
 
@@ -353,7 +338,7 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
         cflg_print_err(CFLG_PARSE_OPT_INVALID, fset->prog_name, false, flag,
                        flag_len, arg);
       }
-      int res = parse_handlers[f->type](f, arg);
+      int res = f->parser(f, arg);
       switch (res) {
       case CFLG_PARSE_ARG_CONSUMED:
         if (skip_next) {
@@ -389,7 +374,7 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
           arg = argv[i + 1];
           skip_next = true;
         }
-        int res = parse_handlers[f->type](f, arg);
+        int res = f->parser(f, arg);
         bool break_loop = false;
         switch (res) {
         case CFLG_PARSE_ARG_CONSUMED:
