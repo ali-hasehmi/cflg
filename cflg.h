@@ -15,13 +15,11 @@
 #include <string.h>
 
 #ifndef CFLG_FLAG_ARENA_BLOCK_SIZE
-#define CFLG_FLAG_ARENA_BLOCK_SIZE 10
+#define CFLG_FLAG_ARENA_BLOCK_SIZE 1
 #endif
 
 #ifndef CFLG_NO_SHORT_NAMES
 #define flgset_t cflg_flgset_t
-#define flgset_create cflg_flgset_create
-#define flgset_destroy cflg_flgset_destroy
 #define flgset_parse cflg_flgset_parse
 #define flgset_int cflg_flgset_int
 #define flgset_uint cflg_flgset_uint
@@ -49,11 +47,15 @@ typedef struct {
   cflg_flg_t **map;
 } cflg_map_t;
 
+typedef struct cflg_flg_arena_block {
+  struct cflg_flg_arena_block *next;
+  cflg_flg_t mem[CFLG_FLAG_ARENA_BLOCK_SIZE];
+} cflg_flg_arena_block_t;
+
 typedef struct cflg_flg_arena {
-  struct cflg_flg_arena *next;
-  size_t used;
-  size_t cap;
-  cflg_flg_t mem[];
+  size_t remaining;
+  size_t nblocks;
+  cflg_flg_arena_block_t *storage;
 } cflg_flg_arena_t;
 
 typedef struct {
@@ -61,11 +63,9 @@ typedef struct {
   int narg;    // number of arguments remaining after flags have been processed.
   char **args; // non-flag arguments after flags have beeen processed.
   const char *prog_name; // name of the program
-  cflg_flg_arena_t *arena;
+  cflg_flg_arena_t arena;
 } cflg_flgset_t;
 
-void cflg_flgset_create(cflg_flgset_t *flgset);
-void cflg_flgset_destroy(cflg_flgset_t *flgset);
 // int  cflg_parse(int argc, char *argv[]);
 void cflg_flgset_int(cflg_flgset_t *flgset, int *p, char name,
                      const char *name_long, const char *arg_name,
@@ -102,23 +102,23 @@ int cflg_flgset_parse(cflg_flgset_t *flgset, int argc, char *argv[]);
 //
 #endif // CFLG_H_INCLUDE
 
-#ifdef CFLG_IMPLEMENTATION
-//  ******                                  ******
-//  ******                                  ******
-//  ******   IMPLEMENTATION SECTION START   ******
-//  ******                                  ******
-//  ******                                  ******
+// #ifdef CFLG_IMPLEMENTATION
+//   ******                                  ******
+//   ******                                  ******
+//   ******   IMPLEMENTATION SECTION START   ******
+//   ******                                  ******
+//   ******                                  ******
 
 void cflg_map_create_from_arena(cflg_map_t *m, cflg_flg_arena_t *a);
 void cflg_map_destroy(cflg_map_t *m);
 bool cflg_map_insert(cflg_map_t *m, const char *k, size_t len, cflg_flg_t *v);
 cflg_flg_t *cflg_map_find(cflg_map_t *m, const char *k, size_t len);
 
-cflg_flg_arena_t *cflg_flg_arena_new();
-void cflg_flg_arena_delete(cflg_flg_arena_t *arena);
 cflg_flg_t *cflg_flg_arena_alloc(cflg_flg_arena_t *arena);
+void cflg_flg_arena_dealloc(cflg_flg_arena_t *arena);
 size_t cflg_flg_arena_len(cflg_flg_arena_t *arena);
-cflg_flg_t *cflg_flg_arena_at(cflg_flg_arena_t *arena, size_t index);
+void cflg_flg_arena_foreach(cflg_flg_arena_t *arena,
+                            void (*callback)(cflg_flg_t *, void *), void *arg);
 
 #define CFLG_PARSE_ARG_REMAINED 0
 #define CFLG_PARSE_ARG_CONSUMED 1
@@ -163,19 +163,6 @@ const char *cflg_find_base(const char *path) {
   return path;
 }
 
-void cflg_flgset_create(cflg_flgset_t *flgset) {
-  debug("start creating flagset\n");
-  memset(flgset, 0, sizeof(cflg_flgset_t));
-  flgset->arena = cflg_flg_arena_new();
-  debug("end creating flagset\n");
-}
-
-void cflg_flgset_destroy(cflg_flgset_t *flgset) {
-  if (flgset->args != NULL)
-    free(flgset->args);
-  cflg_flg_arena_delete(flgset->arena);
-}
-
 cflg_flg_t *cflg_new_flag(cflg_flg_arena_t *arena,
                           int (*parser)(cflg_flg_t *, const char *), void *dest,
                           char name, const char *name_long,
@@ -200,7 +187,7 @@ void cflg_flgset_int(cflg_flgset_t *flgset, int *p, char name,
                      const char *usage) {
   debug("start adding integer to flagset\n");
   cflg_flg_t *f =
-      cflg_new_flag(flgset->arena, cflg_parse_int, p, name, name_long,
+      cflg_new_flag(&flgset->arena, cflg_parse_int, p, name, name_long,
                     CFLG_FALLBACK(arg_name, "int"), usage);
 }
 
@@ -209,7 +196,7 @@ void cflg_flgset_uint(cflg_flgset_t *flgset, unsigned *p, char name,
                       const char *usage) {
   debug("start adding unsigned integer to flagset\n");
   cflg_flg_t *f =
-      cflg_new_flag(flgset->arena, cflg_parse_uint, p, name, name_long,
+      cflg_new_flag(&flgset->arena, cflg_parse_uint, p, name, name_long,
                     CFLG_FALLBACK(arg_name, "uint"), usage);
 }
 
@@ -218,7 +205,7 @@ void cflg_flgset_int64(cflg_flgset_t *flgset, int64_t *p, char name,
                        const char *usage) {
   debug("start adding int64 to flagset\n");
   cflg_flg_t *f =
-      cflg_new_flag(flgset->arena, cflg_parse_int64, p, name, name_long,
+      cflg_new_flag(&flgset->arena, cflg_parse_int64, p, name, name_long,
                     CFLG_FALLBACK(arg_name, "int64"), usage);
 }
 
@@ -227,13 +214,13 @@ void cflg_flgset_uint64(cflg_flgset_t *flgset, uint64_t *p, char name,
                         const char *usage) {
   debug("start adding uint64 to flagset\n");
   cflg_flg_t *f =
-      cflg_new_flag(flgset->arena, cflg_parse_uint64, p, name, name_long,
+      cflg_new_flag(&flgset->arena, cflg_parse_uint64, p, name, name_long,
                     CFLG_FALLBACK(arg_name, "uint64"), usage);
 }
 void cflg_flgset_bool(cflg_flgset_t *flgset, bool *p, char name,
                       const char *name_long, const char *usage) {
   debug("start adding bool to flagset\n");
-  cflg_flg_t *f = cflg_new_flag(flgset->arena, cflg_parse_bool, p, name,
+  cflg_flg_t *f = cflg_new_flag(&flgset->arena, cflg_parse_bool, p, name,
                                 name_long, NULL, usage);
 }
 
@@ -241,24 +228,27 @@ void cflg_flgset_float(cflg_flgset_t *flgset, float *p, char name,
                        const char *name_long, const char *arg_name,
                        const char *usage) {
   debug("start adding bool to flagset\n");
-  cflg_flg_t *f = cflg_new_flag(flgset->arena, cflg_parse_float, p, name, name_long,
-                                CFLG_FALLBACK(arg_name, "float"), usage);
+  cflg_flg_t *f =
+      cflg_new_flag(&flgset->arena, cflg_parse_float, p, name, name_long,
+                    CFLG_FALLBACK(arg_name, "float"), usage);
 }
 
 void cflg_flgset_double(cflg_flgset_t *flgset, double *p, char name,
                         const char *name_long, const char *arg_name,
                         const char *usage) {
   debug("start adding bool to flagset\n");
-  cflg_flg_t *f = cflg_new_flag(flgset->arena, cflg_parse_double, p, name, name_long,
-                                CFLG_FALLBACK(arg_name, "double"), usage);
+  cflg_flg_t *f =
+      cflg_new_flag(&flgset->arena, cflg_parse_double, p, name, name_long,
+                    CFLG_FALLBACK(arg_name, "double"), usage);
 }
 
 void cflg_flgset_string(cflg_flgset_t *flgset, char **p, char name,
                         const char *name_long, const char *arg_name,
                         const char *usage) {
   debug("start adding bool to flagset\n");
-  cflg_flg_t *f = cflg_new_flag(flgset->arena, cflg_parse_string, p, name, name_long,
-                                CFLG_FALLBACK(arg_name, "string"), usage);
+  cflg_flg_t *f =
+      cflg_new_flag(&flgset->arena, cflg_parse_string, p, name, name_long,
+                    CFLG_FALLBACK(arg_name, "string"), usage);
 }
 
 int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
@@ -267,7 +257,7 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
     return 0;
 
   cflg_map_t flags;
-  cflg_map_create_from_arena(&flags, fset->arena);
+  cflg_map_create_from_arena(&flags, &fset->arena);
 
 // order:
 // 1. PROGRAM_NAME macro
@@ -326,7 +316,7 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
       if (CFLG_ISHELP(flag, flag_len)) {
         debug("--help detected printing flags and exiting\n");
         cflg_map_destroy(&flags);
-        cflg_print_flags(fset->arena);
+        cflg_print_flags(&fset->arena);
         exit(0);
       }
 
@@ -359,7 +349,7 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
         char *flag = argv[i] + j;
         if (CFLG_ISHELP(flag, 1)) {
           cflg_map_destroy(&flags);
-          cflg_print_flags(fset->arena);
+          cflg_print_flags(&fset->arena);
           exit(0);
         }
         cflg_flg_t *f = cflg_map_find(&flags, flag, 1);
@@ -418,23 +408,23 @@ uint32_t djb2_hash(const char *s, size_t cnt) {
   return hash;
 }
 
+void cflg_map_create_callback_(cflg_flg_t *f, void *arg) {
+  cflg_map_t *m = (cflg_map_t *)arg;
+  if (f->name)
+    cflg_map_insert(m, &f->name, 1, f);
+  if (f->name_long)
+    cflg_map_insert(m, f->name_long, strlen(f->name_long), f);
+}
+
 void cflg_map_create_from_arena(cflg_map_t *m, cflg_flg_arena_t *a) {
-  size_t arena_len = cflg_flg_arena_len(a);
-  m->map = (cflg_flg_t **)malloc(2 * arena_len * sizeof(cflg_flg_t *));
+  m->cap = 2 * cflg_flg_arena_len(a);
+  m->map = (cflg_flg_t **)malloc(m->cap * sizeof(cflg_flg_t *));
   // TODO: implement proper error handling
   assert(m->map);
-  memset(m->map, 0, 2 * arena_len * sizeof(cflg_flg_t *));
+  memset(m->map, 0, m->cap * sizeof(cflg_flg_t *));
   m->len = 0;
-  m->cap = 2 * arena_len;
   m->hashFunc = djb2_hash;
-
-  for (int i = 0; i < arena_len; ++i) {
-    cflg_flg_t *f = cflg_flg_arena_at(a, i);
-    if (f->name)
-      cflg_map_insert(m, &f->name, 1, f);
-    if (f->name_long)
-      cflg_map_insert(m, f->name_long, strlen(f->name_long), f);
-  }
+  cflg_flg_arena_foreach(a, cflg_map_create_callback_, (void *)m);
 }
 
 void cflg_map_destroy(cflg_map_t *m) { free(m->map); }
@@ -499,30 +489,22 @@ cflg_flg_t *cflg_map_find(cflg_map_t *m, const char *key, size_t len) {
   return NULL;
 }
 
-cflg_flg_arena_t *cflg_flg_arena_new() {
-  cflg_flg_arena_t *arena = (cflg_flg_arena_t *)malloc(
-      sizeof(cflg_flg_arena_t) +
-      (sizeof(cflg_flg_t) * CFLG_FLAG_ARENA_BLOCK_SIZE));
-  if (arena) {
-    arena->used = 0;
-    arena->cap = CFLG_FLAG_ARENA_BLOCK_SIZE;
-    arena->next = NULL;
-  }
-  return arena;
-}
-
 cflg_flg_t *cflg_flg_arena_alloc(cflg_flg_arena_t *arena) {
-  while (arena->used >= arena->cap) {
-    if (arena->next == NULL) {
-      arena->next = cflg_flg_arena_new();
-    }
-    arena = arena->next;
+  if (arena->remaining == 0) {
+    cflg_flg_arena_block_t *tmp =
+        (cflg_flg_arena_block_t *)malloc(sizeof(cflg_flg_arena_block_t));
+    if (tmp == NULL)
+      return NULL;
+    tmp->next = arena->storage;
+    arena->storage = tmp;
+    arena->remaining = CFLG_FLAG_ARENA_BLOCK_SIZE;
+    arena->nblocks++;
   }
-  return &arena->mem[arena->used++];
+  return &arena->storage->mem[CFLG_FLAG_ARENA_BLOCK_SIZE - arena->remaining--];
 }
 
-void cflg_flg_arena_delete(cflg_flg_arena_t *arena) {
-  cflg_flg_arena_t *next = NULL, *curr = arena;
+void cflg_flg_arena_dealloc(cflg_flg_arena_t *arena) {
+  cflg_flg_arena_block_t *next = NULL, *curr = arena->storage;
   while (curr) {
     next = curr->next;
     free(curr);
@@ -531,23 +513,24 @@ void cflg_flg_arena_delete(cflg_flg_arena_t *arena) {
 }
 
 size_t cflg_flg_arena_len(cflg_flg_arena_t *arena) {
-  cflg_flg_arena_t *curr = arena;
-  size_t len = 0;
-  while (curr) {
-    len += curr->used;
-    curr = curr->next;
-  }
-  return len;
+  return arena->nblocks * CFLG_FLAG_ARENA_BLOCK_SIZE - arena->remaining;
 }
 
-cflg_flg_t *cflg_flg_arena_at(cflg_flg_arena_t *arena, size_t index) {
-  while (index >= arena->used) {
-    index -= arena->used;
-    arena = arena->next;
-    if (arena == NULL)
-      return NULL;
+void cflg_flg_arena_foreach(cflg_flg_arena_t *arena,
+                            void (*callback)(cflg_flg_t *, void *), void *arg) {
+  cflg_flg_arena_block_t *curr = arena->storage;
+  bool isFirstBlock = true;
+  while (curr) {
+    size_t count = CFLG_FLAG_ARENA_BLOCK_SIZE;
+    if (isFirstBlock) {
+      count -= arena->remaining;
+      isFirstBlock = false;
+    }
+    for (size_t i = 0; i < count; ++i) {
+      callback(&curr->mem[i], arg);
+    }
+    curr = curr->next;
   }
-  return &arena->mem[index];
 }
 
 int cflg_parse_bool(cflg_flg_t *f, const char *arg) {
@@ -665,17 +648,50 @@ int cflg_parse_string(cflg_flg_t *f, const char *arg) {
   return CFLG_PARSE_ARG_CONSUMED;
 }
 
+void cflg_find_max_len_callback_(cflg_flg_t *f, void *arg) {
+  int *max_len = (int *)arg;
+  debug("flag is %p\n", f);
+  int curr_len = CFLG_STRLEN(f->name_long) + CFLG_STRLEN(f->arg_name);
+  *max_len = (curr_len > *max_len) ? curr_len : *max_len;
+}
+
 int cflg_find_max_len(cflg_flg_arena_t *flags) {
   int max_len = 0;
-  size_t arena_len = cflg_flg_arena_len(flags);
-  debug("arena_len is %llu\n", arena_len);
-  for (size_t i = 0; i < arena_len; ++i) {
-    cflg_flg_t *f = cflg_flg_arena_at(flags, i);
-    debug("flag is %p\n", f);
-    int curr_len = CFLG_STRLEN(f->name_long) + CFLG_STRLEN(f->arg_name);
-    max_len = (curr_len > max_len) ? curr_len : max_len;
-  }
+  cflg_flg_arena_foreach(flags, cflg_find_max_len_callback_, (void *)&max_len);
   return max_len;
+}
+
+void cflg_print_flags_callback_(cflg_flg_t *f, void *arg) {
+  int n = *(int *)arg;
+
+  char buff[1024] = {'\0'};
+  // name, name_long=<arg_name> usage
+  if (f->name) {
+    printf("  -%c", f->name);
+  } else {
+    printf("    ");
+  }
+
+  if (f->name && f->name_long) {
+    n--;
+    putchar(',');
+  }
+
+  if (f->name_long) {
+    snprintf(buff, sizeof(buff), " --%s", f->name_long);
+    if (f->arg_name) {
+      snprintf(buff + strlen(buff), sizeof(buff) - strlen(buff), "=<%s>",
+               f->arg_name);
+    }
+    printf("%-*s", n, buff);
+  } else {
+    if (f->arg_name) {
+      snprintf(buff + strlen(buff), sizeof(buff) - strlen(buff), " <%s>",
+               f->arg_name);
+    }
+    printf("%-*s", n, buff);
+  }
+  printf("%s\n", f->usage ? f->usage : "");
 }
 
 // TODO: cflg_print_flags sucks, it needs to be suckless
@@ -684,39 +700,7 @@ void cflg_print_flags(cflg_flg_arena_t *flags) {
   nspaces += 10;
   debug("maximum len is %d\n", nspaces);
   size_t arena_len = cflg_flg_arena_len(flags);
-  for (size_t i = 0; i < arena_len; ++i) {
-    int n = nspaces;
-
-    char buff[1024] = {'\0'};
-    cflg_flg_t *f = cflg_flg_arena_at(flags, i);
-    // name, name_long=<arg_name> usage
-    if (f->name) {
-      printf("  -%c", f->name);
-    } else {
-      printf("    ");
-    }
-
-    if (f->name && f->name_long) {
-      n--;
-      putchar(',');
-    }
-
-    if (f->name_long) {
-      snprintf(buff, sizeof(buff), " --%s", f->name_long);
-      if (f->arg_name) {
-        snprintf(buff + strlen(buff), sizeof(buff) - strlen(buff), "=<%s>",
-                 f->arg_name);
-      }
-      printf("%-*s", n, buff);
-    } else {
-      if (f->arg_name) {
-        snprintf(buff + strlen(buff), sizeof(buff) - strlen(buff), " <%s>",
-                 f->arg_name);
-      }
-      printf("%-*s", n, buff);
-    }
-    printf("%s\n", f->usage ? f->usage : "");
-  }
+  cflg_flg_arena_foreach(flags, cflg_print_flags_callback_, (void *)&nspaces);
 }
 
 void cflg_print_err(int err_code, const char *prog_name, bool is_short,
@@ -768,4 +752,4 @@ void cflg_print_err(int err_code, const char *prog_name, bool is_short,
 // ******   IMPLEMENTATION SECTION END     ******
 // ******                                  ******
 // ******                                  ******
-#endif // IMPLEMENTATION
+// #endif // IMPLEMENTATION
