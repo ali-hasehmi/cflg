@@ -18,7 +18,18 @@
 #define CFLG_FLAG_ARENA_BLOCK_SIZE 1
 #endif
 
+// return values of parser functions
+#define CFLG_PARSE_ARG_REMAINED 0
+#define CFLG_PARSE_ARG_CONSUMED 1
+#define CFLG_PARSE_ARG_NEEDED  -1
+#define CFLG_PARSE_ARG_INVALID -2
+
+// invalid option error value
+#define CFLG_PARSE_OPT_INVALID -3
+
+
 #ifndef CFLG_NO_SHORT_NAMES
+#define flg_t    cflg_flg_t
 #define flgset_t cflg_flgset_t
 #define flgset_parse cflg_flgset_parse
 #define flgset_int cflg_flgset_int
@@ -29,6 +40,11 @@
 #define flgset_bool cflg_flgset_bool
 #define flgset_float cflg_flgset_float
 #define flgset_double cflg_flgset_double
+#define flgset_func cflg_flgset_func
+#define PARSE_ARG_REMAINED CFLG_PARSE_ARG_REMAINED 
+#define PARSE_ARG_CONSUMED CFLG_PARSE_ARG_CONSUMED
+#define PARSE_ARG_NEEDED   CFLG_PARSE_ARG_NEEDED  
+#define PARSE_ARG_INVALID  CFLG_PARSE_ARG_INVALID 
 #endif
 
 typedef struct cflg_flg {
@@ -67,6 +83,11 @@ typedef struct {
 } cflg_flgset_t;
 
 // int  cflg_parse(int argc, char *argv[]);
+cflg_flg_t *cflg_new_flag(cflg_flg_arena_t *arena,
+                          int (*parser)(cflg_flg_t *, const char *), void *dest,
+                          char name, const char *name_long,
+                          const char *arg_name, const char *usage);
+
 void cflg_flgset_int(cflg_flgset_t *flgset, int *p, char name,
                      const char *name_long, const char *arg_name,
                      const char *usage);
@@ -94,6 +115,9 @@ void cflg_flgset_double(cflg_flgset_t *flgset, double *p, char name,
 
 int cflg_flgset_parse(cflg_flgset_t *flgset, int argc, char *argv[]);
 
+#define cflg_flgset_func(flgset, p, name, name_long, arg_name, usage, parser) \
+        cflg_new_flag(&(flgset)->arena, (parser), (p), (name), (name_long), (arg_name), (usage))
+
 // ******                        ******
 // ******                        ******
 // ******   HEADER SECTION END   ******
@@ -102,7 +126,7 @@ int cflg_flgset_parse(cflg_flgset_t *flgset, int argc, char *argv[]);
 //
 #endif // CFLG_H_INCLUDE
 
-// #ifdef CFLG_IMPLEMENTATION
+#ifdef CFLG_IMPLEMENTATION
 //   ******                                  ******
 //   ******                                  ******
 //   ******   IMPLEMENTATION SECTION START   ******
@@ -119,12 +143,6 @@ void cflg_flg_arena_dealloc(cflg_flg_arena_t *arena);
 size_t cflg_flg_arena_len(cflg_flg_arena_t *arena);
 void cflg_flg_arena_foreach(cflg_flg_arena_t *arena,
                             void (*callback)(cflg_flg_t *, void *), void *arg);
-
-#define CFLG_PARSE_ARG_REMAINED 0
-#define CFLG_PARSE_ARG_CONSUMED 1
-#define CFLG_PARSE_ARG_NEEDED -1
-#define CFLG_PARSE_ARG_INVALID -2
-#define CFLG_PARSE_OPT_INVALID -3
 
 #define CFLG_STRLEN(s) ((s) ? (strlen(s)) : (0))
 #define CFLG_FALLBACK(s, def) ((s) ? (s) : (def))
@@ -752,4 +770,4 @@ void cflg_print_err(int err_code, const char *prog_name, bool is_short,
 // ******   IMPLEMENTATION SECTION END     ******
 // ******                                  ******
 // ******                                  ******
-// #endif // IMPLEMENTATION
+ #endif // IMPLEMENTATION
