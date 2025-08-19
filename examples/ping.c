@@ -22,8 +22,7 @@ main(int argc, char * argv[]) {
     uint ident = rand() % UINT16_MAX;
     double timeout = 0.2; // => 200 ms
 
-	flgset_t fset;
-	flgset_create(&fset);
+	flgset_t fset = {0}; // Extremely IMPORTANT to initialize this with 0
 
 	flgset_int64(&fset,&count, 'c', "count",  "NUM", "number of packets to send");
 	flgset_int(&fset,&mark, 'm', "mark", "MARK", "set fwmark");
