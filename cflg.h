@@ -15,21 +15,20 @@
 #include <string.h>
 
 #ifndef CFLG_FLAG_ARENA_BLOCK_SIZE
-#define CFLG_FLAG_ARENA_BLOCK_SIZE 1
+#define CFLG_FLAG_ARENA_BLOCK_SIZE 16
 #endif
 
 // return values of parser functions
 #define CFLG_PARSE_ARG_REMAINED 0
 #define CFLG_PARSE_ARG_CONSUMED 1
-#define CFLG_PARSE_ARG_NEEDED  -1
+#define CFLG_PARSE_ARG_NEEDED -1
 #define CFLG_PARSE_ARG_INVALID -2
 
 // invalid option error value
 #define CFLG_PARSE_OPT_INVALID -3
 
-
 #ifndef CFLG_NO_SHORT_NAMES
-#define flg_t    cflg_flg_t
+#define flg_t cflg_flg_t
 #define flgset_t cflg_flgset_t
 #define flgset_parse cflg_flgset_parse
 #define flgset_int cflg_flgset_int
@@ -41,10 +40,10 @@
 #define flgset_float cflg_flgset_float
 #define flgset_double cflg_flgset_double
 #define flgset_func cflg_flgset_func
-#define PARSE_ARG_REMAINED CFLG_PARSE_ARG_REMAINED 
+#define PARSE_ARG_REMAINED CFLG_PARSE_ARG_REMAINED
 #define PARSE_ARG_CONSUMED CFLG_PARSE_ARG_CONSUMED
-#define PARSE_ARG_NEEDED   CFLG_PARSE_ARG_NEEDED  
-#define PARSE_ARG_INVALID  CFLG_PARSE_ARG_INVALID 
+#define PARSE_ARG_NEEDED CFLG_PARSE_ARG_NEEDED
+#define PARSE_ARG_INVALID CFLG_PARSE_ARG_INVALID
 #endif
 
 typedef struct cflg_flg {
@@ -115,8 +114,9 @@ void cflg_flgset_double(cflg_flgset_t *flgset, double *p, char name,
 
 int cflg_flgset_parse(cflg_flgset_t *flgset, int argc, char *argv[]);
 
-#define cflg_flgset_func(flgset, p, name, name_long, arg_name, usage, parser) \
-        cflg_new_flag(&(flgset)->arena, (parser), (p), (name), (name_long), (arg_name), (usage))
+#define cflg_flgset_func(flgset, p, name, name_long, arg_name, usage, parser)  \
+  cflg_new_flag(&(flgset)->arena, (parser), (p), (name), (name_long),          \
+                (arg_name), (usage))
 
 // ******                        ******
 // ******                        ******
@@ -127,11 +127,11 @@ int cflg_flgset_parse(cflg_flgset_t *flgset, int argc, char *argv[]);
 #endif // CFLG_H_INCLUDE
 
 #ifdef CFLG_IMPLEMENTATION
-//   ******                                  ******
-//   ******                                  ******
-//   ******   IMPLEMENTATION SECTION START   ******
-//   ******                                  ******
-//   ******                                  ******
+//    ******                                  ******
+//    ******                                  ******
+//    ******   IMPLEMENTATION SECTION START   ******
+//    ******                                  ******
+//    ******                                  ******
 
 void cflg_map_create_from_arena(cflg_map_t *m, cflg_flg_arena_t *a);
 void cflg_map_destroy(cflg_map_t *m);
@@ -335,6 +335,7 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
         debug("--help detected printing flags and exiting\n");
         cflg_map_destroy(&flags);
         cflg_print_flags(&fset->arena);
+        cflg_flg_arena_dealloc(&fset->arena);
         exit(0);
       }
 
@@ -435,7 +436,7 @@ void cflg_map_create_callback_(cflg_flg_t *f, void *arg) {
 }
 
 void cflg_map_create_from_arena(cflg_map_t *m, cflg_flg_arena_t *a) {
-  m->cap = 2 * cflg_flg_arena_len(a);
+  m->cap = 2.5 * cflg_flg_arena_len(a);
   m->map = (cflg_flg_t **)malloc(m->cap * sizeof(cflg_flg_t *));
   // TODO: implement proper error handling
   assert(m->map);
@@ -728,40 +729,36 @@ void cflg_print_err(int err_code, const char *prog_name, bool is_short,
   // format is it really necessary in this library?
   //
   //
-  // TODO: Add '--' before long options
-  char buff[1024];
+  fprintf(stderr, "%s: ", prog_name);
+
   const char *invalid_opt_err, *invalid_arg_err, *need_arg_err;
   if (is_short) {
-    invalid_opt_err = "%s: invalid option -- '%s'\n";
-    invalid_arg_err = "%s: invalid '%s' argument: '%s'\n";
-    need_arg_err = "%s: option requires an argument -- '%s'\n";
-    buff[0] = *opt;
-    buff[1] = '\0';
+    invalid_opt_err = "invalid option -- '%.*s'\n";
+    invalid_arg_err = "invalid '%.*s' argument: '%s'\n";
+    need_arg_err = "option requires an argument -- '%.*s'\n";
   } else {
-    invalid_opt_err = "%s: unrecognize option -- '%s'\n";
-    invalid_arg_err = "%s: invalid %s argument: '%s'\n";
-    need_arg_err = "%s: option '%s' requires an argument\n";
-    memcpy(buff, opt, (1024 > opt_len ? opt_len : 1023));
-    buff[(1024 > opt_len ? opt_len : 1023)] = '\0';
+    invalid_opt_err = "unrecognize option '--%.*s'\n";
+    invalid_arg_err = "invalid --%.*s argument: '%s'\n";
+    need_arg_err = "option '--%.*s' requires an argument\n";
   }
 
   switch (err_code) {
 
   case CFLG_PARSE_OPT_INVALID:
-    fprintf(stderr, invalid_opt_err, prog_name, buff);
+    fprintf(stderr, invalid_opt_err, opt_len, opt);
 
     break;
   case CFLG_PARSE_ARG_INVALID:
-    fprintf(stderr, invalid_arg_err, prog_name, buff, arg);
+    fprintf(stderr, invalid_arg_err, opt_len, opt, arg);
     break;
 
   case CFLG_PARSE_ARG_NEEDED:
-    fprintf(stderr, need_arg_err, prog_name, buff);
+    fprintf(stderr, need_arg_err, opt_len, opt);
 
     break;
   }
 
-  // TODO: print usage then exit
+  fprintf(stderr, "Try '%s --help' for more information.\n", prog_name);
   exit(1);
 }
 
@@ -770,4 +767,4 @@ void cflg_print_err(int err_code, const char *prog_name, bool is_short,
 // ******   IMPLEMENTATION SECTION END     ******
 // ******                                  ******
 // ******                                  ******
- #endif // IMPLEMENTATION
+#endif // IMPLEMENTATION
