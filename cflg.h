@@ -344,6 +344,7 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
       if (f == NULL || f->name_long == NULL ||
           strncmp(f->name_long, flag, flag_len)) {
         cflg_map_destroy(&flags);
+        cflg_flg_arena_dealloc(&fset->arena);
         cflg_print_err(CFLG_PARSE_OPT_INVALID, fset->prog_name, false, flag,
                        flag_len, arg);
       }
@@ -358,6 +359,7 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
         break;
       default:
         cflg_map_destroy(&flags);
+        cflg_flg_arena_dealloc(&fset->arena);
         cflg_print_err(res, fset->prog_name, false, flag, flag_len, arg);
       }
     }
@@ -369,11 +371,13 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
         if (CFLG_ISHELP(flag, 1)) {
           cflg_map_destroy(&flags);
           cflg_print_flags(&fset->arena);
+          cflg_flg_arena_dealloc(&fset->arena);
           exit(0);
         }
         cflg_flg_t *f = cflg_map_find(&flags, flag, 1);
         if (f == NULL || f->name == 0 || f->name != flag[0]) {
           cflg_map_destroy(&flags);
+          cflg_flg_arena_dealloc(&fset->arena);
           cflg_print_err(CFLG_PARSE_OPT_INVALID, fset->prog_name, true, flag, 1,
                          NULL);
         }
@@ -396,6 +400,7 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
           break;
         default:
           cflg_map_destroy(&flags);
+          cflg_flg_arena_dealloc(&fset->arena);
           cflg_print_err(res, fset->prog_name, true, flag, 1, arg);
         }
         if (break_loop)
@@ -410,6 +415,7 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
   }
 
   cflg_map_destroy(&flags);
+  cflg_flg_arena_dealloc(&fset->arena);
   fset->parsed = true;
   return 0;
 }
