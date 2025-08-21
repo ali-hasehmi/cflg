@@ -51,8 +51,9 @@ typedef struct cflg_flg {
   void *dest;
   const char *usage;
   const char *arg_name;
-  char name;
   const char *name_long;
+  char name;
+  bool has_seen;
 } cflg_flg_t;
 
 typedef struct {
@@ -349,6 +350,7 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
                        flag_len, arg);
       }
       int res = f->parser(f, arg);
+      f->has_seen = true;
       switch (res) {
       case CFLG_PARSE_ARG_CONSUMED:
         if (skip_next) {
@@ -388,6 +390,7 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
           skip_next = true;
         }
         int res = f->parser(f, arg);
+        f->has_seen = true;
         bool break_loop = false;
         switch (res) {
         case CFLG_PARSE_ARG_CONSUMED:
@@ -559,10 +562,9 @@ void cflg_flg_arena_foreach(cflg_flg_arena_t *arena,
 }
 
 int cflg_parse_bool(cflg_flg_t *f, const char *arg) {
-  // BUG: multiple calls, causes different results
-  // TODO: arbitrary number of calls, must only result in reverse of default
-  // value
-  *(bool *)f->dest = !(*(bool *)f->dest);
+  if (!f->has_seen) {
+    *(bool *)f->dest = !(*(bool *)f->dest);
+  }
   return CFLG_PARSE_ARG_REMAINED;
 }
 
