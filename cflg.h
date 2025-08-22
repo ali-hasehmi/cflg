@@ -127,7 +127,7 @@ int cflg_flgset_parse(cflg_flgset_t *flgset, int argc, char *argv[]);
 //
 #endif // CFLG_H_INCLUDE
 
-#ifdef CFLG_IMPLEMENTATION
+// #ifdef CFLG_IMPLEMENTATION
 //    ******                                  ******
 //    ******                                  ******
 //    ******   IMPLEMENTATION SECTION START   ******
@@ -147,6 +147,7 @@ void cflg_flg_arena_foreach(cflg_flg_arena_t *arena,
 
 #define CFLG_STRLEN(s) ((s) ? (strlen(s)) : (0))
 #define CFLG_FALLBACK(s, def) ((s) ? (s) : (def))
+#define CFLG_ISEMPTY(s) ( ((s) == NULL) || (*(s) == '\0') )
 
 #define CFLG_ISHELP(f, l)                                                      \
   (l == 1 && f[0] == 'h') || (l == strlen("help") && !memcmp(f, "help", l))
@@ -569,8 +570,7 @@ int cflg_parse_bool(cflg_flg_t *f, const char *arg) {
 }
 
 int cflg_parse_int(cflg_flg_t *f, const char *arg) {
-  // TODO: instead of "strlen(arg) == 0" use arg[0] == '\0'
-  if (arg == NULL || strlen(arg) == 0) {
+  if (CFLG_ISEMPTY(arg)) {
     return CFLG_PARSE_ARG_NEEDED;
   }
 
@@ -586,7 +586,7 @@ int cflg_parse_int(cflg_flg_t *f, const char *arg) {
 }
 
 int cflg_parse_uint(cflg_flg_t *f, const char *arg) {
-  if (arg == NULL || strlen(arg) == 0) {
+  if (CFLG_ISEMPTY(arg)) {
     return CFLG_PARSE_ARG_NEEDED;
   }
 
@@ -602,7 +602,7 @@ int cflg_parse_uint(cflg_flg_t *f, const char *arg) {
 }
 
 int cflg_parse_int64(cflg_flg_t *f, const char *arg) {
-  if (arg == NULL || strlen(arg) == 0) {
+  if (CFLG_ISEMPTY(arg)) {
     return CFLG_PARSE_ARG_NEEDED;
   }
 
@@ -618,7 +618,7 @@ int cflg_parse_int64(cflg_flg_t *f, const char *arg) {
 }
 
 int cflg_parse_uint64(cflg_flg_t *f, const char *arg) {
-  if (arg == NULL || strlen(arg) == 0) {
+  if (CFLG_ISEMPTY(arg)) {
     return CFLG_PARSE_ARG_NEEDED;
   }
 
@@ -634,7 +634,7 @@ int cflg_parse_uint64(cflg_flg_t *f, const char *arg) {
 }
 
 int cflg_parse_float(cflg_flg_t *f, const char *arg) {
-  if (arg == NULL || strlen(arg) == 0) {
+  if (CFLG_ISEMPTY(arg)) {
     return CFLG_PARSE_ARG_NEEDED;
   }
 
@@ -650,7 +650,7 @@ int cflg_parse_float(cflg_flg_t *f, const char *arg) {
 }
 
 int cflg_parse_double(cflg_flg_t *f, const char *arg) {
-  if (arg == NULL || strlen(arg) == 0) {
+  if (CFLG_ISEMPTY(arg)) {
     return CFLG_PARSE_ARG_NEEDED;
   }
 
@@ -666,8 +666,7 @@ int cflg_parse_double(cflg_flg_t *f, const char *arg) {
 }
 
 int cflg_parse_string(cflg_flg_t *f, const char *arg) {
-  // TODO: *arg == '\0' might have better performance
-  if (arg == NULL || strlen(arg) == 0) {
+  if (CFLG_ISEMPTY(arg)) {
     return CFLG_PARSE_ARG_NEEDED;
   }
 
@@ -775,4 +774,4 @@ void cflg_print_err(int err_code, const char *prog_name, bool is_short,
 // ******   IMPLEMENTATION SECTION END     ******
 // ******                                  ******
 // ******                                  ******
-#endif // IMPLEMENTATION
+// #endif // IMPLEMENTATION
