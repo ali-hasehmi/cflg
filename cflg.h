@@ -147,7 +147,7 @@ void cflg_flg_arena_foreach(cflg_flg_arena_t *arena,
 
 #define CFLG_STRLEN(s) ((s) ? (strlen(s)) : (0))
 #define CFLG_FALLBACK(s, def) ((s) ? (s) : (def))
-#define CFLG_ISEMPTY(s) ( ((s) == NULL) || (*(s) == '\0') )
+#define CFLG_ISEMPTY(s) (((s) == NULL) || (*(s) == '\0'))
 
 #define CFLG_ISHELP(f, l)                                                      \
   (l == 1 && f[0] == 'h') || (l == strlen("help") && !memcmp(f, "help", l))
@@ -678,55 +678,61 @@ void cflg_find_max_len_callback_(cflg_flg_t *f, void *arg) {
   int *max_len = (int *)arg;
   debug("flag is %p\n", f);
   int curr_len = CFLG_STRLEN(f->name_long) + CFLG_STRLEN(f->arg_name);
-  *max_len = (curr_len > *max_len) ? curr_len : *max_len;
-}
-
-int cflg_find_max_len(cflg_flg_arena_t *flags) {
-  int max_len = 0;
-  cflg_flg_arena_foreach(flags, cflg_find_max_len_callback_, (void *)&max_len);
-  return max_len;
+  if (curr_len > *max_len) {
+    *max_len = curr_len;
+  }
 }
 
 void cflg_print_flags_callback_(cflg_flg_t *f, void *arg) {
-  int n = *(int *)arg;
+  int max_len = *(int *)arg;
+  int current_len = 0;
 
   char buff[1024] = {'\0'};
-  // name, name_long=<arg_name> usage
+  // [1] name, name_long=<arg_name> usage
+  // [2] name  <arg_name>           usage
+  // [3]       name_long=<arg_name> usage
+  current_len += printf("  ");
+
   if (f->name) {
-    printf("  -%c", f->name);
+    current_len += printf("-%c", f->name);
   } else {
-    printf("    ");
+    current_len += printf("  ");
   }
 
   if (f->name && f->name_long) {
-    n--;
-    putchar(',');
+    current_len += printf(", ");
+  } else {
+    current_len += printf("  ");
   }
 
   if (f->name_long) {
-    snprintf(buff, sizeof(buff), " --%s", f->name_long);
-    if (f->arg_name) {
-      snprintf(buff + strlen(buff), sizeof(buff) - strlen(buff), "=<%s>",
-               f->arg_name);
-    }
-    printf("%-*s", n, buff);
-  } else {
-    if (f->arg_name) {
-      snprintf(buff + strlen(buff), sizeof(buff) - strlen(buff), " <%s>",
-               f->arg_name);
-    }
-    printf("%-*s", n, buff);
+    current_len += printf("--%s", f->name_long);
   }
-  printf("%s\n", f->usage ? f->usage : "");
+
+  if (f->arg_name) {
+    if (f->name_long) {
+      current_len += printf("=");
+    }
+    current_len += printf("<%s>", f->arg_name);
+  }
+
+  if (max_len > current_len) {
+    printf("%*s", max_len - current_len, "");
+  }
+
+  if (f->usage) {
+    printf("%s\n", f->usage);
+  }
 }
 
-// TODO: cflg_print_flags sucks, it needs to be suckless
 void cflg_print_flags(cflg_flg_arena_t *flags) {
-  int nspaces = cflg_find_max_len(flags);
-  nspaces += 10;
-  debug("maximum len is %d\n", nspaces);
-  size_t arena_len = cflg_flg_arena_len(flags);
-  cflg_flg_arena_foreach(flags, cflg_print_flags_callback_, (void *)&nspaces);
+  int max_width;
+  cflg_flg_arena_foreach(flags, cflg_find_max_len_callback_,
+                         (void *)&max_width);
+  max_width += 15;
+  debug("maximum len is %d\n", max_width);
+
+  cflg_flg_arena_foreach(flags, cflg_print_flags_callback_, (void *)&max_width);
 }
 
 void cflg_print_err(int err_code, const char *prog_name, bool is_short,
