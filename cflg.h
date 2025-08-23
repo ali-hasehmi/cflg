@@ -127,7 +127,7 @@ int cflg_flgset_parse(cflg_flgset_t *flgset, int argc, char *argv[]);
 //
 #endif // CFLG_H_INCLUDE
 
-// #ifdef CFLG_IMPLEMENTATION
+#ifdef CFLG_IMPLEMENTATION
 //    ******                                  ******
 //    ******                                  ******
 //    ******   IMPLEMENTATION SECTION START   ******
@@ -780,4 +780,4 @@ void cflg_print_err(int err_code, const char *prog_name, bool is_short,
 // ******   IMPLEMENTATION SECTION END     ******
 // ******                                  ******
 // ******                                  ******
-// #endif // IMPLEMENTATION
+#endif // IMPLEMENTATION
