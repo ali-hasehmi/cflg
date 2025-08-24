@@ -1,8 +1,9 @@
 ## Improvements
-- [ ] Convert default functions(e.g. flgset_int, flgset_bool) to macros
+- [x] Convert default functions(e.g. flgset_int, flgset_bool) to macros
 - [ ] Create a mechanism to customize output stream of library
 - [ ] Create a mechanism to customize help message
 - [ ] Add usage function to print arbitrary usage message before showing help
+- [ ] Refactor flgset_parse function
 
 ## Bugs:
 - [ ] Program doesn't differentiate between '-h' and "--h"
