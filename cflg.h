@@ -14,10 +14,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifndef CFLG_FLAG_ARENA_BLOCK_SIZE
-#define CFLG_FLAG_ARENA_BLOCK_SIZE 16
-#endif
-
 // return values of parser functions
 #define CFLG_PARSE_ARG_REMAINED 0
 #define CFLG_PARSE_ARG_CONSUMED 1
@@ -26,6 +22,8 @@
 
 // invalid option error value
 #define CFLG_PARSE_OPT_INVALID -3
+// a long option cannot be auto completed
+#define CFLG_PARSE_OPT_AMBIGUOUS -4
 
 #ifndef CFLG_NO_SHORT_NAMES
 #define flg_t cflg_flg_t
@@ -54,71 +52,66 @@ typedef struct cflg_flg {
   const char *name_long;
   char name;
   bool has_seen;
+  struct cflg_flg *next;
 } cflg_flg_t;
-
-
-typedef struct cflg_flg_arena_block {
-  struct cflg_flg_arena_block *next;
-  cflg_flg_t mem[CFLG_FLAG_ARENA_BLOCK_SIZE];
-} cflg_flg_arena_block_t;
-
-typedef struct cflg_flg_arena {
-  size_t remaining;
-  size_t nblocks;
-  cflg_flg_arena_block_t *storage;
-} cflg_flg_arena_t;
 
 typedef struct {
   bool parsed;
   int narg;    // number of arguments remaining after flags have been processed.
   char **args; // non-flag arguments after flags have beeen processed.
   const char *prog_name; // name of the program
-  cflg_flg_arena_t arena;
+  cflg_flg_t *flgs;
 } cflg_flgset_t;
 
 #define CFLG_FALLBACK(s, def) ((s) ? (s) : (def))
+#define CFLG_PASTE(a, b) a##b
+#define CFLG_JOIN(a, b) CFLG_PASTE(a, b)
 
-cflg_flg_t *cflg_new_flag(cflg_flg_arena_t *arena,
-                          int (*parser)(cflg_flg_t *, const char *), void *dest,
-                          char name, const char *name_long,
-                          const char *arg_name, const char *usage);
+// cflg_new_flag has been implemented using c99 compound literals
+#define cflg_new_flag(flgset, parse_function, var, opt, opt_long, arg, desc)   \
+  (flgset)->flgs = &(cflg_flg_t){.name = (opt),                                \
+                                 .name_long = (opt_long),                      \
+                                 .parser = (parse_function),                   \
+                                 .dest = (var),                                \
+                                 .usage = (desc),                              \
+                                 .arg_name = (arg),                            \
+                                 .next = (flgset)->flgs};
 
 #define cflg_flgset_int(flgset, p, name, name_long, arg_name, usage)           \
-  cflg_new_flag(&(flgset)->arena, (cflg_parse_int), (int *)(p), (name),        \
-                (name_long), CFLG_FALLBACK((arg_name), "int"), (usage))
+  cflg_new_flag((flgset), (cflg_parse_int), (int *)(p), (name), (name_long),   \
+                CFLG_FALLBACK((arg_name), "int"), (usage))
 
 #define cflg_flgset_bool(flgset, p, name, name_long, usage)                    \
-  cflg_new_flag(&(flgset)->arena, (cflg_parse_bool), (bool *)(p), (name),      \
-                (name_long), NULL, (usage))
+  cflg_new_flag((flgset), (cflg_parse_bool), (bool *)(p), (name), (name_long), \
+                NULL, (usage))
 
 #define cflg_flgset_string(flgset, p, name, name_long, arg_name, usage)        \
-  cflg_new_flag(&(flgset)->arena, (cflg_parse_string), (char **)(p), (name),   \
+  cflg_new_flag((flgset), (cflg_parse_string), (char **)(p), (name),           \
                 (name_long), CFLG_FALLBACK((arg_name), "string"), (usage))
 
 #define cflg_flgset_float(flgset, p, name, name_long, arg_name, usage)         \
-  cflg_new_flag(&(flgset)->arena, (cflg_parse_float), (float *)(p), (name),    \
+  cflg_new_flag((flgset), (cflg_parse_float), (float *)(p), (name),            \
                 (name_long), CFLG_FALLBACK((arg_name), "float"), (usage));
 
 #define cflg_flgset_uint(flgset, p, name, name_long, arg_name, usage)          \
-  cflg_new_flag(&(flgset)->arena, (cflg_parse_uint), (uint *)(p), (name),      \
-                (name_long), CFLG_FALLBACK((arg_name), "uint"), (usage));
+  cflg_new_flag((flgset), (cflg_parse_uint), (uint *)(p), (name), (name_long), \
+                CFLG_FALLBACK((arg_name), "uint"), (usage));
 
 #define cflg_flgset_int64(flgset, p, name, name_long, arg_name, usage)         \
-  cflg_new_flag(&(flgset)->arena, (cflg_parse_int64), (int64_t *)(p), (name),  \
+  cflg_new_flag((flgset), (cflg_parse_int64), (int64_t *)(p), (name),          \
                 (name_long), CFLG_FALLBACK((arg_name), "int64"), (usage))
 
 #define cflg_flgset_uint64(flgset, p, name, name_long, arg_name, usage)        \
-  cflg_new_flag(&(flgset)->arena, (cflg_parse_uint64), (uint64_t *)(p),        \
-                (name), (name_long), CFLG_FALLBACK((arg_name), "uint64"),      \
-                (usage))
+  cflg_new_flag((flgset), (cflg_parse_uint64), (uint64_t *)(p), (name),        \
+                (name_long), CFLG_FALLBACK((arg_name), "uint64"), (usage))
 
 #define cflg_flgset_double(flgset, p, name, name_long, arg_name, usage)        \
-  cflg_new_flag(&(flgset)->arena, (cflg_parse_double), (double *)(p), (name),  \
+  cflg_new_flag((flgset), (cflg_parse_double), (double *)(p), (name),          \
                 (name_long), CFLG_FALLBACK((arg_name), "double"), (usage));
 
 #define cflg_flgset_func(flgset, p, name, name_long, arg_name, usage, parser)  \
-  cflg_new_flag(&(flgset)->arena, (parser), (p), (name), (name_long),          \
-                (arg_name), (usage))
+  cflg_new_flag((flgset), (parser), (p), (name), (name_long), (arg_name),      \
+                (usage))
 
 int cflg_flgset_parse(cflg_flgset_t *flgset, int argc, char *argv[]);
 
@@ -131,7 +124,6 @@ int cflg_parse_uint64(cflg_flg_t *f, const char *arg);
 int cflg_parse_float(cflg_flg_t *f, const char *arg);
 int cflg_parse_double(cflg_flg_t *f, const char *arg);
 int cflg_parse_string(cflg_flg_t *f, const char *arg);
-
 
 // ******                        ******
 // ******                        ******
@@ -148,31 +140,17 @@ int cflg_parse_string(cflg_flg_t *f, const char *arg);
 //    ******                                  ******
 //    ******                                  ******
 
-typedef struct {
-  uint32_t (*hashFunc)(const char *, size_t);
-  size_t len;
-  size_t cap;
-  cflg_flg_t **map;
-} cflg_map_t;
-
-void cflg_map_create_from_arena(cflg_map_t *m, cflg_flg_arena_t *a);
-void cflg_map_destroy(cflg_map_t *m);
-bool cflg_map_insert(cflg_map_t *m, const char *k, size_t len, cflg_flg_t *v);
-cflg_flg_t *cflg_map_find(cflg_map_t *m, const char *k, size_t len);
-
-cflg_flg_t *cflg_flg_arena_alloc(cflg_flg_arena_t *arena);
-void cflg_flg_arena_dealloc(cflg_flg_arena_t *arena);
-size_t cflg_flg_arena_len(cflg_flg_arena_t *arena);
-void cflg_flg_arena_foreach(cflg_flg_arena_t *arena,
-                            void (*callback)(cflg_flg_t *, void *), void *arg);
-
 #define CFLG_STRLEN(s) ((s) ? (strlen(s)) : (0))
 #define CFLG_ISEMPTY(s) (((s) == NULL) || (*(s) == '\0'))
+#define CFLG_STRNCMP(s1, s2, n) ((s1 && s2) ? (strncmp(s1, s2, n)) : (-1))
 
 #define CFLG_ISHELP(f, l)                                                      \
   (l == 1 && f[0] == 'h') || (l == strlen("help") && !memcmp(f, "help", l))
 
-void cflg_print_flags(cflg_flg_arena_t *flags);
+#define CFLG_FOREACH(item, flgs)                                               \
+  for (cflg_flg_t *item = (flgs); item != NULL; item = item->next)
+
+void cflg_print_flags(cflg_flg_t *flags);
 void cflg_print_err(int err_code, const char *prog_name, bool is_short,
                     const char *opt, size_t opt_len, const char *arg);
 
@@ -181,7 +159,9 @@ void cflg_print_err(int err_code, const char *prog_name, bool is_short,
   fprintf(stderr, "DEBUG: %s:%d:%s(): " fmt, __FILE__, __LINE__, __func__,     \
           ##args)
 #else
-#define debug(fmt, args...) /* Don't do anything in release builds */
+#define debug(fmt, args...) /* Don't do anything in                            \
+                                                         release               \
+                               builds */
 #endif
 
 const char *cflg_find_base(const char *path) {
@@ -194,37 +174,15 @@ const char *cflg_find_base(const char *path) {
   return path;
 }
 
-cflg_flg_t *cflg_new_flag(cflg_flg_arena_t *arena,
-                          int (*parser)(cflg_flg_t *, const char *), void *dest,
-                          char name, const char *name_long,
-                          const char *arg_name, const char *usage) {
-  if (name != 0 && !isalnum(name))
-    return NULL;
-  cflg_flg_t *f = cflg_flg_arena_alloc(arena);
-  if (f) {
-    memset(f, 0, sizeof(cflg_flg_t));
-    f->parser = parser;
-    f->name_long = name_long;
-    f->name = name;
-    f->usage = usage;
-    f->dest = dest;
-    f->arg_name = arg_name;
-  }
-  return f;
-}
-
 int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
 
   if (fset->parsed)
     return 0;
 
-  cflg_map_t flags;
-  cflg_map_create_from_arena(&flags, &fset->arena);
-
-// order:
-// 1. PROGRAM_NAME macro
-// 2. explicit name
-// 3. use executable name
+  // order:
+  // 1. PROGRAM_NAME macro
+  // 2. explicit name
+  // 3. use executable name
 #ifndef PROGRAM_NAME
   if (fset->prog_name == NULL)
     fset->prog_name = cflg_find_base(argv[0]);
@@ -236,7 +194,6 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
   fset->narg = 0;
   fset->args = (char **)malloc(argc * sizeof(char *));
   if (!fset->args) {
-    cflg_map_destroy(&flags);
     return -1;
   }
 
@@ -276,22 +233,25 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
 
       // if flag is "--help" print help
       if (CFLG_ISHELP(flag, flag_len)) {
-        debug("--help detected printing flags and exiting\n");
-        cflg_map_destroy(&flags);
-        cflg_print_flags(&fset->arena);
-        cflg_flg_arena_dealloc(&fset->arena);
+        debug("--help detected printing flags and "
+              "exiting\n");
+        cflg_print_flags(fset->flgs);
         exit(0);
       }
 
-      debug("looking up the hashtable for flag\n");
-      cflg_flg_t *f = cflg_map_find(&flags, flag, flag_len);
-      if (f == NULL || f->name_long == NULL ||
-          strncmp(f->name_long, flag, flag_len)) {
-        cflg_map_destroy(&flags);
-        cflg_flg_arena_dealloc(&fset->arena);
+      debug("looking up the list for a matching flag\n");
+      cflg_flg_t *f = NULL;
+      CFLG_FOREACH(i, fset->flgs) {
+        if (!CFLG_STRNCMP(i->name_long, flag, flag_len)) {
+          f = i;
+          break;
+        }
+      }
+      if (f == NULL) {
         cflg_print_err(CFLG_PARSE_OPT_INVALID, fset->prog_name, false, flag,
                        flag_len, arg);
       }
+
       int res = f->parser(f, arg);
       f->has_seen = true;
       switch (res) {
@@ -303,8 +263,6 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
       case CFLG_PARSE_ARG_REMAINED:
         break;
       default:
-        cflg_map_destroy(&flags);
-        cflg_flg_arena_dealloc(&fset->arena);
         cflg_print_err(res, fset->prog_name, false, flag, flag_len, arg);
       }
     }
@@ -314,21 +272,23 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
       for (int j = 1; j < len; ++j) {
         char *flag = argv[i] + j;
         if (CFLG_ISHELP(flag, 1)) {
-          cflg_map_destroy(&flags);
-          cflg_print_flags(&fset->arena);
-          cflg_flg_arena_dealloc(&fset->arena);
+          cflg_print_flags(fset->flgs);
           exit(0);
         }
-        cflg_flg_t *f = cflg_map_find(&flags, flag, 1);
-        if (f == NULL || f->name == 0 || f->name != flag[0]) {
-          cflg_map_destroy(&flags);
-          cflg_flg_arena_dealloc(&fset->arena);
+        cflg_flg_t *f = NULL;
+        CFLG_FOREACH(i, fset->flgs) {
+          if (i->name == *flag) {
+            f = i;
+            break;
+          }
+        }
+        if (f == NULL) {
           cflg_print_err(CFLG_PARSE_OPT_INVALID, fset->prog_name, true, flag, 1,
                          NULL);
         }
         bool skip_next = false;
         char *arg = argv[i] + j + 1;
-        if (j + 1 == len) { // TODO: OR "*arg == '\0'" which one is better?
+        if (CFLG_ISEMPTY(arg)) {
           arg = argv[i + 1];
           skip_next = true;
         }
@@ -345,8 +305,6 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
         case CFLG_PARSE_ARG_REMAINED:
           break;
         default:
-          cflg_map_destroy(&flags);
-          cflg_flg_arena_dealloc(&fset->arena);
           cflg_print_err(res, fset->prog_name, true, flag, 1, arg);
         }
         if (break_loop)
@@ -360,147 +318,12 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
     fset->narg++;
   }
 
-  cflg_map_destroy(&flags);
-  cflg_flg_arena_dealloc(&fset->arena);
   fset->parsed = true;
   return 0;
 }
 
 void parseflg(cflg_flgset_t *flgset, char *first, char *second) {
   for (int i = 1; i < strlen(first); ++i) {
-  }
-}
-
-uint32_t djb2_hash(const char *s, size_t cnt) {
-  uint32_t hash = 5381u;
-  for (size_t i = 0; i < cnt; ++i) {
-    hash = ((hash << 5) + hash) + (uint8_t)s[i];
-  }
-  return hash;
-}
-
-void cflg_map_create_callback_(cflg_flg_t *f, void *arg) {
-  cflg_map_t *m = (cflg_map_t *)arg;
-  if (f->name)
-    cflg_map_insert(m, &f->name, 1, f);
-  if (f->name_long)
-    cflg_map_insert(m, f->name_long, strlen(f->name_long), f);
-}
-
-void cflg_map_create_from_arena(cflg_map_t *m, cflg_flg_arena_t *a) {
-  m->cap = 2.5 * cflg_flg_arena_len(a);
-  m->map = (cflg_flg_t **)malloc(m->cap * sizeof(cflg_flg_t *));
-  // TODO: implement proper error handling
-  assert(m->map);
-  memset(m->map, 0, m->cap * sizeof(cflg_flg_t *));
-  m->len = 0;
-  m->hashFunc = djb2_hash;
-  cflg_flg_arena_foreach(a, cflg_map_create_callback_, (void *)m);
-}
-
-void cflg_map_destroy(cflg_map_t *m) { free(m->map); }
-
-bool cflg_map_insert(cflg_map_t *m, const char *key, size_t len,
-                     cflg_flg_t *v) {
-  debug("start adding flag to map\n");
-  // panic if key is NULL
-  assert(key != NULL);
-
-  // if map is full, resize the backing array
-  if (m->cap <= m->len) {
-    debug("map is full!\n");
-    return false;
-  }
-
-  debug("calling hash function to hash key\n");
-  // hash the key and find the location
-  uint32_t loc = m->hashFunc(key, len) % m->cap;
-
-  // find an empty bucket
-  while (m->map[loc] != NULL) {
-    // check if key has been inserted before
-    debug("checking if key has been inserted before\n");
-    if ((len == 1 && m->map[loc]->name == key[0]) ||
-        (m->map[loc]->name_long != NULL &&
-         !strncmp(m->map[loc]->name_long, key, len))) {
-      debug("flag has been inserted before\n");
-      return false;
-    }
-    loc = (loc + 1) % m->cap;
-  }
-
-  m->map[loc] = v;
-  m->len++;
-  debug("flag inserted into map successfully\n");
-  return true;
-}
-
-cflg_flg_t *cflg_map_find(cflg_map_t *m, const char *key, size_t len) {
-
-  // panic if key is NULL
-  assert(key != NULL);
-
-  // return if map is empty
-  if (m->len == 0) {
-    return NULL;
-  }
-
-  uint32_t loc = m->hashFunc(key, len) % m->cap;
-  while (m->map[loc] != NULL) {
-    // check if key has been inserted before
-    if ((len == 1 && m->map[loc]->name == key[0]) ||
-        (m->map[loc]->name_long != NULL &&
-         !strncmp(m->map[loc]->name_long, key, len))) {
-      debug("%c key found\n", *key);
-      return m->map[loc];
-    }
-    loc = (loc + 1) % m->cap;
-  }
-  debug("%c key not found\n", *key);
-  return NULL;
-}
-
-cflg_flg_t *cflg_flg_arena_alloc(cflg_flg_arena_t *arena) {
-  if (arena->remaining == 0) {
-    cflg_flg_arena_block_t *tmp =
-        (cflg_flg_arena_block_t *)malloc(sizeof(cflg_flg_arena_block_t));
-    if (tmp == NULL)
-      return NULL;
-    tmp->next = arena->storage;
-    arena->storage = tmp;
-    arena->remaining = CFLG_FLAG_ARENA_BLOCK_SIZE;
-    arena->nblocks++;
-  }
-  return &arena->storage->mem[CFLG_FLAG_ARENA_BLOCK_SIZE - arena->remaining--];
-}
-
-void cflg_flg_arena_dealloc(cflg_flg_arena_t *arena) {
-  cflg_flg_arena_block_t *next = NULL, *curr = arena->storage;
-  while (curr) {
-    next = curr->next;
-    free(curr);
-    curr = next;
-  }
-}
-
-size_t cflg_flg_arena_len(cflg_flg_arena_t *arena) {
-  return arena->nblocks * CFLG_FLAG_ARENA_BLOCK_SIZE - arena->remaining;
-}
-
-void cflg_flg_arena_foreach(cflg_flg_arena_t *arena,
-                            void (*callback)(cflg_flg_t *, void *), void *arg) {
-  cflg_flg_arena_block_t *curr = arena->storage;
-  bool isFirstBlock = true;
-  while (curr) {
-    size_t count = CFLG_FLAG_ARENA_BLOCK_SIZE;
-    if (isFirstBlock) {
-      count -= arena->remaining;
-      isFirstBlock = false;
-    }
-    for (size_t i = 0; i < count; ++i) {
-      callback(&curr->mem[i], arg);
-    }
-    curr = curr->next;
   }
 }
 
@@ -616,72 +439,66 @@ int cflg_parse_string(cflg_flg_t *f, const char *arg) {
   return CFLG_PARSE_ARG_CONSUMED;
 }
 
-void cflg_find_max_len_callback_(cflg_flg_t *f, void *arg) {
-  int *max_len = (int *)arg;
-  debug("flag is %p\n", f);
-  int curr_len = CFLG_STRLEN(f->name_long) + CFLG_STRLEN(f->arg_name);
-  if (curr_len > *max_len) {
-    *max_len = curr_len;
-  }
-}
-
-void cflg_print_flags_callback_(cflg_flg_t *f, void *arg) {
-  int max_len = *(int *)arg;
-  int current_len = 0;
-
-  char buff[1024] = {'\0'};
-  // [1] name, name_long=<arg_name> usage
-  // [2] name  <arg_name>           usage
-  // [3]       name_long=<arg_name> usage
-  current_len += printf("  ");
-
-  if (f->name) {
-    current_len += printf("-%c", f->name);
-  } else {
-    current_len += printf("  ");
-  }
-
-  if (f->name && f->name_long) {
-    current_len += printf(", ");
-  } else {
-    current_len += printf("  ");
-  }
-
-  if (f->name_long) {
-    current_len += printf("--%s", f->name_long);
-  }
-
-  if (f->arg_name) {
-    if (f->name_long) {
-      current_len += printf("=");
+void cflg_print_flags(cflg_flg_t *flags) {
+  // find the maximum length
+  int max_width = 0;
+  CFLG_FOREACH(i, flags) {
+    int curr_len = CFLG_STRLEN(i->name_long) + CFLG_STRLEN(i->arg_name);
+    if (curr_len > max_width) {
+      max_width = curr_len;
     }
-    current_len += printf("<%s>", f->arg_name);
   }
-
-  if (max_len > current_len) {
-    printf("%*s", max_len - current_len, "");
-  }
-
-  if (f->usage) {
-    printf("%s\n", f->usage);
-  }
-}
-
-void cflg_print_flags(cflg_flg_arena_t *flags) {
-  int max_width;
-  cflg_flg_arena_foreach(flags, cflg_find_max_len_callback_,
-                         (void *)&max_width);
   max_width += 15;
   debug("maximum len is %d\n", max_width);
 
-  cflg_flg_arena_foreach(flags, cflg_print_flags_callback_, (void *)&max_width);
+  // print flags
+  CFLG_FOREACH(f, flags) {
+    int current_len = 0;
+
+    // [1] name, name_long=<arg_name> usage
+    // [2] name  <arg_name>           usage
+    // [3]       name_long=<arg_name> usage
+    current_len += printf("  ");
+
+    if (f->name) {
+      current_len += printf("-%c", f->name);
+    } else {
+      current_len += printf("  ");
+    }
+
+    if (f->name && f->name_long) {
+      current_len += printf(", ");
+    } else {
+      current_len += printf("  ");
+    }
+
+    if (f->name_long) {
+      current_len += printf("--%s", f->name_long);
+    }
+
+    if (f->arg_name) {
+      if (f->name_long) {
+        current_len += printf("=");
+      }
+      current_len += printf("<%s>", f->arg_name);
+    }
+
+    if (max_width > current_len) {
+      printf("%*s", max_width - current_len, "");
+    }
+
+    if (f->usage) {
+      printf("%s\n", f->usage);
+    }
+  }
 }
 
 void cflg_print_err(int err_code, const char *prog_name, bool is_short,
                     const char *opt, size_t opt_len, const char *arg) {
 
-  // TODO: gnu seems to print different error message base on short or long
-  // format is it really necessary in this library?
+  // TODO: gnu seems to print different error message
+  // base on short or long format is it really
+  // necessary in this library?
   //
   //
   fprintf(stderr, "%s: ", prog_name);
