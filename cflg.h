@@ -6,6 +6,8 @@
 #ifndef CFLG_H_INCLUDE
 #define CFLG_H_INCLUDE
 
+#define CFLG_IMPLEMENTATION
+
 #include <assert.h>
 #include <ctype.h>
 #include <stdbool.h>
@@ -480,7 +482,7 @@ void cflg_print_flags(cflg_flg_t *flags) {
       if (f->name_long) {
         current_len += printf("=");
       }
-      current_len += printf("<%s>", f->arg_name);
+      current_len += printf("%s", f->arg_name);
     }
 
     if (max_width > current_len) {
