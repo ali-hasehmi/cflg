@@ -31,12 +31,9 @@ typedef struct {
  * @brief Generic parser to add an argument to a dynamic list of strings.
  * Used for --env, --volume, --cap-add, --cap-drop, and --publish.
  */
-int list_parser(flg_t *f, const char *arg) {
-  if (arg == NULL || *arg == '\0') {
-    return CFLG_PARSE_ARG_NEEDED;
-  }
+int list_parser(parser_context_t* ctx) {
 
-  string_list_t *list = (string_list_t *)f->dest;
+  string_list_t *list = (string_list_t *)ctx->dest;
 
   // Grow the list if necessary
   if (list->count >= list->capacity) {
@@ -51,30 +48,27 @@ int list_parser(flg_t *f, const char *arg) {
   }
 
   // Add the new item (strdup makes a copy)
-  list->items[list->count] = strdup(arg);
+  list->items[list->count] = strdup(ctx->arg);
   if (!list->items[list->count]) {
     perror("strdup failed");
     return CFLG_PARSE_ARG_INVALID;
   }
   list->count++;
 
-  return CFLG_PARSE_ARG_CONSUMED;
+  return CFLG_PARSE_OK;
 }
 
 /**
  * @brief Custom parser for memory sizes (e.g., "1g", "512m").
  */
-int mem_parser(flg_t *f, const char *arg) {
-  if (arg == NULL || *arg == '\0') {
-    return CFLG_PARSE_ARG_NEEDED;
-  }
+int mem_parser(parser_context_t *ctx) {
 
-  size_t len = strlen(arg);
+  size_t len = strlen(ctx->arg);
   if (len < 1)
     return CFLG_PARSE_ARG_INVALID;
 
   long long multi = 1;
-  char suffix = arg[len - 1];
+  char suffix = ctx->arg[len - 1];
   int num_len = len;
 
   switch (suffix) {
@@ -96,7 +90,7 @@ int mem_parser(flg_t *f, const char *arg) {
   }
 
   char num_str[256];
-  strncpy(num_str, arg, num_len);
+  strncpy(num_str, ctx->arg, num_len);
   num_str[num_len] = '\0';
 
   char *endptr;
@@ -104,21 +98,18 @@ int mem_parser(flg_t *f, const char *arg) {
   if (*endptr != '\0')
     return CFLG_PARSE_ARG_INVALID;
 
-  *(long long *)(f->dest) = val * multi;
-  return CFLG_PARSE_ARG_CONSUMED;
+  *(long long *)(ctx->dest) = val * multi;
+  return CFLG_PARSE_OK;
 }
 
 /**
  * @brief Custom parser for user and group IDs (e.g., "1000:1000").
  */
-int user_parser(flg_t *f, const char *arg) {
-  if (arg == NULL || *arg == '\0') {
-    return CFLG_PARSE_ARG_NEEDED;
-  }
+int user_parser(parser_context_t* ctx) {
 
   // Make a mutable copy to safely use strtok or modify the string
   char arg_copy[256];
-  strncpy(arg_copy, arg, sizeof(arg_copy) - 1);
+  strncpy(arg_copy, ctx->arg, sizeof(arg_copy) - 1);
   arg_copy[sizeof(arg_copy) - 1] = '\0';
 
   char *uid_str = arg_copy;
@@ -138,9 +129,9 @@ int user_parser(flg_t *f, const char *arg) {
   if (*endptr != '\0' || gid < 0 || gid > UINT16_MAX)
     return CFLG_PARSE_ARG_INVALID;
 
-  ((user_t *)f->dest)->uid = (uint16_t)uid;
-  ((user_t *)f->dest)->gid = (uint16_t)gid;
-  return CFLG_PARSE_ARG_CONSUMED;
+  ((user_t *)ctx->dest)->uid = (uint16_t)uid;
+  ((user_t *)ctx->dest)->gid = (uint16_t)gid;
+  return CFLG_PARSE_OK;
 }
 
 /**

@@ -28,14 +28,11 @@ typedef struct {
  * @brief Custom parser for the --limit-rate flag.
  * Parses arguments like "100k", "2.5m" into bytes per second.
  */
-int rate_limit_parser(flg_t *f, const char *arg) {
-  if (arg == NULL || *arg == '\0') {
-    return CFLG_PARSE_ARG_NEEDED;
-  }
+int rate_limit_parser(parser_context_t* ctx) {
 
   char *endptr;
-  double val = strtod(arg, &endptr);
-  if (endptr == arg) {
+  double val = strtod(ctx->arg, &endptr);
+  if (endptr == ctx->arg) {
     return CFLG_PARSE_ARG_INVALID; // Not a number
   }
 
@@ -56,20 +53,17 @@ int rate_limit_parser(flg_t *f, const char *arg) {
     }
   }
 
-  *(long long *)(f->dest) = (long long)(val * multiplier);
-  return CFLG_PARSE_ARG_CONSUMED;
+  *(long long *)(ctx->dest) = (long long)(val * multiplier);
+  return CFLG_PARSE_OK;
 }
 
 /**
  * @brief Custom parser for the --header flag.
  * Allows the flag to be specified multiple times, collecting all arguments.
  */
-int header_parser(flg_t *f, const char *arg) {
-  if (arg == NULL || *arg == '\0') {
-    return CFLG_PARSE_ARG_NEEDED;
-  }
+int header_parser(parser_context_t *ctx) {
 
-  header_list_t *list = (header_list_t *)f->dest;
+  header_list_t *list = (header_list_t *)ctx->dest;
 
   // Grow the list if necessary
   if (list->count >= list->capacity) {
@@ -85,14 +79,14 @@ int header_parser(flg_t *f, const char *arg) {
   }
 
   // Add the new header (strdup makes a copy)
-  list->items[list->count] = strdup(arg);
+  list->items[list->count] = strdup(ctx->arg);
   if (!list->items[list->count]) {
     perror("strdup failed");
     return CFLG_PARSE_ARG_INVALID;
   }
   list->count++;
 
-  return CFLG_PARSE_ARG_CONSUMED;
+  return CFLG_PARSE_OK;
 }
 
 int main(int argc, char *argv[]) {
