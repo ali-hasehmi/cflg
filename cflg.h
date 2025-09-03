@@ -41,8 +41,6 @@
 #define flgset_float cflg_flgset_float
 #define flgset_double cflg_flgset_double
 #define flgset_func cflg_flgset_func
-#define PARSE_ARG_REMAINED CFLG_PARSE_ARG_REMAINED
-#define PARSE_ARG_CONSUMED CFLG_PARSE_ARG_CONSUMED
 #define PARSE_ARG_NEEDED CFLG_PARSE_ARG_NEEDED
 #define PARSE_ARG_INVALID CFLG_PARSE_ARG_INVALID
 #endif
@@ -73,8 +71,6 @@ typedef struct {
 } cflg_flgset_t;
 
 #define CFLG_FALLBACK(s, def) ((s) ? (s) : (def))
-#define CFLG_PASTE(a, b) a##b
-#define CFLG_JOIN(a, b) CFLG_PASTE(a, b)
 
 // cflg_new_flag has been implemented using c99 compound literals
 #define cflg_new_flag(flgset, parse_function, var, opt, opt_long, arg, desc)   \
@@ -169,9 +165,7 @@ void cflg_print_err(int err_code, const char *prog_name, bool is_short,
   fprintf(stderr, "DEBUG: %s:%d:%s(): " fmt, __FILE__, __LINE__, __func__,     \
           ##args)
 #else
-#define debug(fmt, args...) /* Don't do anything in                            \
-                                                         release               \
-                               builds */
+#define debug(fmt, args...) /* Don't do anything in release builds */
 #endif
 
 const char *cflg_find_base(const char *path) {
@@ -182,6 +176,43 @@ const char *cflg_find_base(const char *path) {
     }
   }
   return path;
+}
+
+int cflg_flg_find(cflg_flg_t *flgs, const char *opt, int opt_len,
+                  cflg_flg_t **res) {
+  *res = NULL;
+  bool ambiguous = false;
+
+  CFLG_FOREACH(i, flgs) {
+    if (!CFLG_STRNCMP(i->name_long, opt, opt_len)) {
+      size_t name_len = CFLG_STRLEN(i->name_long);
+
+      // if it's an exact match
+      if (opt_len == name_len) {
+        *res = i;
+        return CFLG_PARSE_OK;
+      }
+      // if it's a partial match
+      if (opt_len < name_len) {
+        // if there were other partial matches before
+        if (*res) {
+          //  if an exact match not found later, returns an error
+          ambiguous = true;
+        }
+        *res = i;
+      }
+    }
+  }
+
+  if (ambiguous) {
+    return CFLG_PARSE_OPT_AMBIGUOUS;
+  }
+
+  if (*res) {
+    return CFLG_PARSE_OK;
+  }
+
+  return CFLG_PARSE_OPT_INVALID;
 }
 
 int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
@@ -256,15 +287,9 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
 
       debug("looking up the list for a matching flag\n");
       cflg_flg_t *f = NULL;
-      CFLG_FOREACH(i, fset->flgs) {
-        if (!CFLG_STRNCMP(i->name_long, flag, flag_len)) {
-          f = i;
-          break;
-        }
-      }
-      if (f == NULL) {
-        cflg_print_err(CFLG_PARSE_OPT_INVALID, fset->prog_name, false, flag,
-                       flag_len, arg);
+      int res = cflg_flg_find(fset->flgs, flag, flag_len, &f);
+      if (res != CFLG_PARSE_OK) {
+        cflg_print_err(res, fset->prog_name, false, flag, flag_len, arg);
       }
 
       if (!CFLG_NEED_VALUE(f) && arg_forced) {
@@ -285,7 +310,7 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
       ctx.has_been_parsed = f->has_seen;
       ctx.dest = f->dest;
 
-      int res = f->parser(&ctx);
+      res = f->parser(&ctx);
       if (res != CFLG_PARSE_OK) {
         cflg_print_err(res, fset->prog_name, false, flag, flag_len, arg);
       }
@@ -509,7 +534,8 @@ void cflg_print_err(int err_code, const char *prog_name, bool is_short,
   //
   fprintf(stderr, "%s: ", prog_name);
 
-  const char *invalid_opt_err, *invalid_arg_err, *need_arg_err, *forced_arg_err;
+  const char *invalid_opt_err, *invalid_arg_err, *need_arg_err, *forced_arg_err,
+      *ambiguous_opt_err;
   if (is_short) {
     invalid_opt_err = "invalid option -- '%.*s'\n";
     invalid_arg_err = "invalid '%.*s' argument: '%s'\n";
@@ -519,6 +545,7 @@ void cflg_print_err(int err_code, const char *prog_name, bool is_short,
     invalid_arg_err = "invalid --%.*s argument: '%s'\n";
     need_arg_err = "option '--%.*s' requires an argument\n";
     forced_arg_err = "option '--%.*s' doesn't allow an argument\n";
+    ambiguous_opt_err = "option '--%.*s' is ambiguous\n";
   }
 
   switch (err_code) {
@@ -534,8 +561,14 @@ void cflg_print_err(int err_code, const char *prog_name, bool is_short,
   case CFLG_PARSE_ARG_NEEDED:
     fprintf(stderr, need_arg_err, opt_len, opt);
     break;
+
   case CFLG_PARSE_ARG_FORCED:
     fprintf(stderr, forced_arg_err, opt_len, opt);
+    break;
+
+  case CFLG_PARSE_OPT_AMBIGUOUS:
+    fprintf(stderr, ambiguous_opt_err, opt_len, opt);
+    break;
   }
 
   fprintf(stderr, "Try '%s --help' for more information.\n", prog_name);
