@@ -1,12 +1,13 @@
+//
 // ******                          ******
 // ******                          ******
 // ******   HEADER SECTION START   ******
 // ******                          ******
 // ******                          ******
+//
 #ifndef CFLG_H_INCLUDE
 #define CFLG_H_INCLUDE
 
-#define CFLG_IMPLEMENTATION
 
 #include <assert.h>
 #include <ctype.h>
@@ -15,17 +16,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-// return values of parser functions
-#define CFLG_PARSE_OK 0
-#define CFLG_PARSE_ARG_NEEDED -1
-#define CFLG_PARSE_ARG_INVALID -2
-#define CFLG_PARSE_ARG_FORCED -3
-
-// invalid option error value
-#define CFLG_PARSE_OPT_INVALID -4
-// a long option cannot be auto completed
-#define CFLG_PARSE_OPT_AMBIGUOUS -5
 
 #ifndef CFLG_NO_SHORT_NAMES
 #define parser_context_t cflg_parser_context_t
@@ -41,8 +31,10 @@
 #define flgset_float cflg_flgset_float
 #define flgset_double cflg_flgset_double
 #define flgset_func cflg_flgset_func
-#define PARSE_ARG_NEEDED CFLG_PARSE_ARG_NEEDED
-#define PARSE_ARG_INVALID CFLG_PARSE_ARG_INVALID
+#define OK CFLG_OK
+#define OK_NO_ARG CFLG_OK_NO_ARG
+#define ERR_ARG_NEEDED CFLG_ERR_ARG_NEEDED
+#define ERR_ARG_INVALID CFLG_ERR_ARG_INVALID
 #endif
 
 typedef struct {
@@ -51,8 +43,21 @@ typedef struct {
   const char *arg; // if flags needed an argument
 } cflg_parser_context_t;
 
+/* parser function type
+   Function pointer type for parsing a command-line flag's argument.
+   Takes a cflg_parser_context_t* containing flag details and argument,
+   returns a status code (e.g., CFLG_OK, CFLG_ERR_ARG_NEEDED). */
+typedef int (*cflg_parser_t)(cflg_parser_context_t *);
+
+/* Return values for command-line flag parser functions */
+#define CFLG_OK 0               /* Successfully parsed option and consumed its argument */
+#define CFLG_OK_NO_ARG 1        /* Successfully parsed option; no argument was required or taken */
+#define CFLG_ERR_ARG_NEEDED -1  /* Parsing failed: option requires an argument, but none was provided */
+#define CFLG_ERR_ARG_INVALID -2 /* Parsing failed: option's argument was provided but invalid (e.g., wrong format) */
+
+
 typedef struct cflg_flg {
-  int (*parser)(cflg_parser_context_t *ctx);
+  cflg_parser_t parser;
   void *dest;
   const char *usage;
   const char *arg_name;
@@ -74,13 +79,10 @@ typedef struct {
 
 // cflg_new_flag has been implemented using c99 compound literals
 #define cflg_new_flag(flgset, parse_function, var, opt, opt_long, arg, desc)   \
-  (flgset)->flgs = &(cflg_flg_t){.name = (opt),                                \
-                                 .name_long = (opt_long),                      \
-                                 .parser = (parse_function),                   \
-                                 .dest = (var),                                \
-                                 .usage = (desc),                              \
-                                 .arg_name = (arg),                            \
-                                 .next = (flgset)->flgs};
+  (flgset)->flgs = &(cflg_flg_t) {                                             \
+    .name = (opt), .name_long = (opt_long), .parser = (parse_function),        \
+    .dest = (var), .usage = (desc), .arg_name = (arg), .next = (flgset)->flgs  \
+  }
 
 #define cflg_flgset_int(flgset, p, name, name_long, arg_name, usage)           \
   cflg_new_flag((flgset), (cflg_parse_int), (int *)(p), (name), (name_long),   \
@@ -130,6 +132,7 @@ int cflg_parse_float(cflg_parser_context_t *ctx);
 int cflg_parse_double(cflg_parser_context_t *ctx);
 int cflg_parse_string(cflg_parser_context_t *ctx);
 
+//
 // ******                        ******
 // ******                        ******
 // ******   HEADER SECTION END   ******
@@ -139,16 +142,24 @@ int cflg_parse_string(cflg_parser_context_t *ctx);
 #endif // CFLG_H_INCLUDE
 
 #ifdef CFLG_IMPLEMENTATION
-//    ******                                  ******
-//    ******                                  ******
-//    ******   IMPLEMENTATION SECTION START   ******
-//    ******                                  ******
-//    ******                                  ******
+//
+// ******                                  ******
+// ******                                  ******
+// ******   IMPLEMENTATION SECTION START   ******
+// ******                                  ******
+// ******                                  ******
+//
+
+// an argument was forced but not needed
+#define CFLG_ERR_ARG_FORCED -3
+// invalid option error value
+#define CFLG_ERR_OPT_INVALID -4
+// a long option cannot be auto completed
+#define CFLG_ERR_OPT_AMBIGUOUS -5
 
 #define CFLG_STRLEN(s) ((s) ? (strlen(s)) : (0))
 #define CFLG_ISEMPTY(s) (((s) == NULL) || (*(s) == '\0'))
 #define CFLG_STRNCMP(s1, s2, n) ((s1 && s2) ? (strncmp(s1, s2, n)) : (-1))
-#define CFLG_NEED_VALUE(flg) ((flg)->arg_name != NULL)
 
 #define CFLG_ISHELP(f, l)                                                      \
   (l == 1 && f[0] == 'h') || (l == strlen("help") && !memcmp(f, "help", l))
@@ -190,7 +201,7 @@ int cflg_flg_find(cflg_flg_t *flgs, const char *opt, int opt_len,
       // if it's an exact match
       if (opt_len == name_len) {
         *res = i;
-        return CFLG_PARSE_OK;
+        return CFLG_OK;
       }
       // if it's a partial match
       if (opt_len < name_len) {
@@ -205,14 +216,14 @@ int cflg_flg_find(cflg_flg_t *flgs, const char *opt, int opt_len,
   }
 
   if (ambiguous) {
-    return CFLG_PARSE_OPT_AMBIGUOUS;
+    return CFLG_ERR_OPT_AMBIGUOUS;
   }
 
   if (*res) {
-    return CFLG_PARSE_OK;
+    return CFLG_OK;
   }
 
-  return CFLG_PARSE_OPT_INVALID;
+  return CFLG_ERR_OPT_INVALID;
 }
 
 int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
@@ -263,7 +274,7 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
       bool arg_forced = false;
       const char *flag = argv[i] + 2;
       size_t flag_len;
-      if (arg == NULL) /* no '=' in flag */ {
+      if (arg == NULL) { /* no '=' in flag */
         arg = argv[i + 1];
         flag_len = len - 2;
       } else {
@@ -276,7 +287,7 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
       if (CFLG_ISHELP(flag, flag_len)) {
         if (arg_forced) {
           debug("argument forced on --help option\n");
-          cflg_print_err(CFLG_PARSE_ARG_FORCED, fset->prog_name, false, flag,
+          cflg_print_err(CFLG_ERR_ARG_FORCED, fset->prog_name, false, flag,
                          flag_len, arg);
         }
         debug("--help detected printing flags and "
@@ -288,30 +299,30 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
       debug("looking up the list for a matching flag\n");
       cflg_flg_t *f = NULL;
       int res = cflg_flg_find(fset->flgs, flag, flag_len, &f);
-      if (res != CFLG_PARSE_OK) {
+      if (res != CFLG_OK) {
         cflg_print_err(res, fset->prog_name, false, flag, flag_len, arg);
       }
 
-      if (!CFLG_NEED_VALUE(f) && arg_forced) {
-        cflg_print_err(CFLG_PARSE_ARG_FORCED, fset->prog_name, false, flag,
-                       flag_len, arg);
-      }
-
-      if (CFLG_NEED_VALUE(f)) {
-        if (!arg_forced) {
-          i++;
-        }
-        if (CFLG_ISEMPTY(arg)) {
-          cflg_print_err(CFLG_PARSE_ARG_NEEDED, fset->prog_name, false, flag,
-                         flag_len, arg);
-        }
+      if (!CFLG_ISEMPTY(arg)) {
         ctx.arg = arg;
       }
       ctx.has_been_parsed = f->has_seen;
       ctx.dest = f->dest;
 
       res = f->parser(&ctx);
-      if (res != CFLG_PARSE_OK) {
+      switch (res) {
+      case CFLG_OK:
+        if (!arg_forced) {
+          i++;
+        }
+        break;
+      case CFLG_OK_NO_ARG:
+        if (arg_forced) {
+          cflg_print_err(CFLG_ERR_ARG_FORCED, fset->prog_name, false, flag,
+                         flag_len, arg);
+        }
+        break;
+      default:
         cflg_print_err(res, fset->prog_name, false, flag, flag_len, arg);
       }
 
@@ -334,34 +345,37 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
           }
         }
         if (f == NULL) {
-          cflg_print_err(CFLG_PARSE_OPT_INVALID, fset->prog_name, true, flag, 1,
+          cflg_print_err(CFLG_ERR_OPT_INVALID, fset->prog_name, true, flag, 1,
                          NULL);
         }
+
         bool break_loop = false;
         char *arg = argv[i] + j + 1;
-        if (CFLG_NEED_VALUE(f)) {
-          if (CFLG_ISEMPTY(arg)) {
-            arg = argv[i + 1];
-          }
-          if (CFLG_ISEMPTY(arg)) {
-            cflg_print_err(CFLG_PARSE_ARG_NEEDED, fset->prog_name, false, flag,
-                           1, arg);
-          }
-          i++;
+        if (CFLG_ISEMPTY(arg)) {
+          arg = argv[i + 1];
           break_loop = true;
-          ctx.arg = arg;
         }
+
+        ctx.arg = arg;
         ctx.dest = f->dest;
         ctx.has_been_parsed = f->has_seen;
 
         int res = f->parser(&ctx);
-        if (res != CFLG_PARSE_OK) {
+        switch (res) {
+        case CFLG_OK:
+          break;
+        case CFLG_OK_NO_ARG:
+          break_loop = false;
+          break;
+
+        default:
           cflg_print_err(res, fset->prog_name, true, flag, 1, arg);
         }
 
         f->has_seen = true;
-        if (break_loop)
+        if (break_loop) {
           break;
+        }
       }
     }
   }
@@ -384,7 +398,7 @@ int cflg_parse_bool(cflg_parser_context_t *ctx) {
   if (!ctx->has_been_parsed) {
     *(bool *)ctx->dest = !(*(bool *)ctx->dest);
   }
-  return CFLG_PARSE_OK;
+  return CFLG_OK_NO_ARG;
 }
 
 int cflg_parse_int(cflg_parser_context_t *ctx) {
@@ -392,12 +406,12 @@ int cflg_parse_int(cflg_parser_context_t *ctx) {
   char *endptr;
   int n = strtol(ctx->arg, &endptr, 0);
   if (*endptr != '\0') {
-    return CFLG_PARSE_ARG_INVALID;
+    return CFLG_ERR_ARG_INVALID;
   }
 
   *(int *)ctx->dest = n;
 
-  return CFLG_PARSE_OK;
+  return CFLG_OK;
 }
 
 int cflg_parse_uint(cflg_parser_context_t *ctx) {
@@ -405,12 +419,12 @@ int cflg_parse_uint(cflg_parser_context_t *ctx) {
   char *endptr;
   uint n = strtoul(ctx->arg, &endptr, 0);
   if (*endptr != '\0') {
-    return CFLG_PARSE_ARG_INVALID;
+    return CFLG_ERR_ARG_INVALID;
   }
 
   *(uint *)ctx->dest = n;
 
-  return CFLG_PARSE_OK;
+  return CFLG_OK;
 }
 
 int cflg_parse_int64(cflg_parser_context_t *ctx) {
@@ -418,12 +432,12 @@ int cflg_parse_int64(cflg_parser_context_t *ctx) {
   char *endptr;
   int64_t n = strtoll(ctx->arg, &endptr, 0);
   if (*endptr != '\0') {
-    return CFLG_PARSE_ARG_INVALID;
+    return CFLG_ERR_ARG_INVALID;
   }
 
   *(int64_t *)ctx->dest = n;
 
-  return CFLG_PARSE_OK;
+  return CFLG_OK;
 }
 
 int cflg_parse_uint64(cflg_parser_context_t *ctx) {
@@ -431,12 +445,12 @@ int cflg_parse_uint64(cflg_parser_context_t *ctx) {
   char *endptr;
   uint64_t n = strtoull(ctx->arg, &endptr, 0);
   if (*endptr != '\0') {
-    return CFLG_PARSE_ARG_INVALID;
+    return CFLG_ERR_ARG_INVALID;
   }
 
   *(uint64_t *)ctx->dest = n;
 
-  return CFLG_PARSE_OK;
+  return CFLG_OK;
 }
 
 int cflg_parse_float(cflg_parser_context_t *ctx) {
@@ -444,12 +458,12 @@ int cflg_parse_float(cflg_parser_context_t *ctx) {
   char *endptr;
   float n = strtof(ctx->arg, &endptr);
   if (*endptr != '\0') {
-    return CFLG_PARSE_ARG_INVALID;
+    return CFLG_ERR_ARG_INVALID;
   }
 
   *(float *)ctx->dest = n;
 
-  return CFLG_PARSE_OK;
+  return CFLG_OK;
 }
 
 int cflg_parse_double(cflg_parser_context_t *ctx) {
@@ -457,17 +471,17 @@ int cflg_parse_double(cflg_parser_context_t *ctx) {
   char *endptr;
   double n = strtod(ctx->arg, &endptr);
   if (*endptr != '\0') {
-    return CFLG_PARSE_ARG_INVALID;
+    return CFLG_ERR_ARG_INVALID;
   }
 
   *(double *)ctx->dest = n;
 
-  return CFLG_PARSE_OK;
+  return CFLG_OK;
 }
 
 int cflg_parse_string(cflg_parser_context_t *ctx) {
   *(char **)ctx->dest = (char *)ctx->arg;
-  return CFLG_PARSE_OK;
+  return CFLG_OK;
 }
 
 void cflg_print_flags(cflg_flg_t *flags) {
@@ -497,18 +511,18 @@ void cflg_print_flags(cflg_flg_t *flags) {
       current_len += printf("  ");
     }
 
-    if (f->name && f->name_long) {
-      current_len += printf(", ");
+    if (f->name && !CFLG_ISEMPTY(f->name_long)) {
+      current_len += printf(",");
     } else {
-      current_len += printf("  ");
+      current_len += printf(" ");
     }
 
-    if (f->name_long) {
-      current_len += printf("--%s", f->name_long);
+    if (!CFLG_ISEMPTY(f->name_long)) {
+      current_len += printf(" --%s", f->name_long);
     }
 
-    if (f->arg_name) {
-      if (f->name_long) {
+    if (!CFLG_ISEMPTY(f->arg_name)) {
+      if (!CFLG_ISEMPTY(f->name_long)) {
         current_len += printf("=");
       }
       current_len += printf("%s", f->arg_name);
@@ -518,9 +532,10 @@ void cflg_print_flags(cflg_flg_t *flags) {
       printf("%*s", max_width - current_len, "");
     }
 
-    if (f->usage) {
-      printf("%s\n", f->usage);
+    if (!CFLG_ISEMPTY(f->usage)) {
+      printf("%s", f->usage);
     }
+    printf("\n");
   }
 }
 
@@ -550,23 +565,23 @@ void cflg_print_err(int err_code, const char *prog_name, bool is_short,
 
   switch (err_code) {
 
-  case CFLG_PARSE_OPT_INVALID:
+  case CFLG_ERR_OPT_INVALID:
     fprintf(stderr, invalid_opt_err, opt_len, opt);
     break;
 
-  case CFLG_PARSE_ARG_INVALID:
+  case CFLG_ERR_ARG_INVALID:
     fprintf(stderr, invalid_arg_err, opt_len, opt, arg);
     break;
 
-  case CFLG_PARSE_ARG_NEEDED:
+  case CFLG_ERR_ARG_NEEDED:
     fprintf(stderr, need_arg_err, opt_len, opt);
     break;
 
-  case CFLG_PARSE_ARG_FORCED:
+  case CFLG_ERR_ARG_FORCED:
     fprintf(stderr, forced_arg_err, opt_len, opt);
     break;
 
-  case CFLG_PARSE_OPT_AMBIGUOUS:
+  case CFLG_ERR_OPT_AMBIGUOUS:
     fprintf(stderr, ambiguous_opt_err, opt_len, opt);
     break;
   }
@@ -575,9 +590,11 @@ void cflg_print_err(int err_code, const char *prog_name, bool is_short,
   exit(1);
 }
 
+//
 // ******                                  ******
 // ******                                  ******
 // ******   IMPLEMENTATION SECTION END     ******
 // ******                                  ******
 // ******                                  ******
+//
 #endif // IMPLEMENTATION

@@ -13,3 +13,4 @@
 - [x] If an arugment is forced on a bool flag(e.g. --verbose=forced_argument), program ignores the arugment instead of producing error
 - [x] There is no mechanism to inform parsers if an arugment has been forced
 - [x] Long flags auto completion is not working properly
+- [x] Using empty string as name_long of a flag casues malformation when printing flags

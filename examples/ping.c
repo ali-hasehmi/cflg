@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
     flgset_bool(&fset, &ipv6_only, '6', NULL, "Use IPv6 only.");
 
     // Integer Flags
-    flgset_int64(&fset, &count, 'c', "count", "<NUM>", "Stop after sending <NUM> packets.");
+    flgset_int64(&fset, &count, 'c', "", "<NUM>", "Stop after sending <NUM> packets.");
     flgset_int(&fset, &deadline, 'w', "deadline", "<SECS>", "Exit after <SECS> seconds.");
     flgset_int(&fset, &ttl, 't', "ttl", "<NUM>", "Set the IP Time to Live.");
     flgset_int(&fset, &mark, 'm', "mark", "<MARK>", "Set the fwmark on outgoing packets.");

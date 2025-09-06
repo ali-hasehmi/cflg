@@ -33,7 +33,7 @@ int rate_limit_parser(parser_context_t* ctx) {
   char *endptr;
   double val = strtod(ctx->arg, &endptr);
   if (endptr == ctx->arg) {
-    return CFLG_PARSE_ARG_INVALID; // Not a number
+    return ERR_ARG_INVALID; // Not a number
   }
 
   double multiplier = 1.0;
@@ -49,12 +49,12 @@ int rate_limit_parser(parser_context_t* ctx) {
       multiplier = 1024 * 1024 * 1024;
       break;
     default:
-      return CFLG_PARSE_ARG_INVALID; // Invalid suffix
+      return ERR_ARG_INVALID; // Invalid suffix
     }
   }
 
   *(long long *)(ctx->dest) = (long long)(val * multiplier);
-  return CFLG_PARSE_OK;
+  return OK;
 }
 
 /**
@@ -72,7 +72,7 @@ int header_parser(parser_context_t *ctx) {
     if (!new_items) {
       // In a real app, handle memory allocation failure gracefully
       perror("realloc failed");
-      return CFLG_PARSE_ARG_INVALID;
+      return ERR_ARG_INVALID;
     }
     list->items = new_items;
     list->capacity = new_capacity;
@@ -82,11 +82,11 @@ int header_parser(parser_context_t *ctx) {
   list->items[list->count] = strdup(ctx->arg);
   if (!list->items[list->count]) {
     perror("strdup failed");
-    return CFLG_PARSE_ARG_INVALID;
+    return ERR_ARG_INVALID;
   }
   list->count++;
 
-  return CFLG_PARSE_OK;
+  return OK;
 }
 
 int main(int argc, char *argv[]) {
