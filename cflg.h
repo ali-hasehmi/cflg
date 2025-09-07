@@ -8,6 +8,7 @@
 #ifndef CFLG_H_INCLUDE
 #define CFLG_H_INCLUDE
 
+#define CFLG_IMPLEMENTATION
 
 #include <assert.h>
 #include <ctype.h>
@@ -39,6 +40,7 @@
 
 typedef struct {
   bool has_been_parsed;
+  bool is_arg_forced;
   void *dest;
   const char *arg; // if flags needed an argument
 } cflg_parser_context_t;
@@ -54,9 +56,11 @@ typedef int (*cflg_parser_t)(cflg_parser_context_t *);
 #define CFLG_OK_NO_ARG 1        /* Successfully parsed option; no argument was required or taken */
 #define CFLG_ERR_ARG_NEEDED -1  /* Parsing failed: option requires an argument, but none was provided */
 #define CFLG_ERR_ARG_INVALID -2 /* Parsing failed: option's argument was provided but invalid (e.g., wrong format) */
+#define CFLG_ERR_ARG_FORCED -3  /* an argument was forced but not needed */
 
 
-typedef struct cflg_flg {
+typedef struct cflg_flg cflg_flg_t;
+struct cflg_flg {
   cflg_parser_t parser;
   void *dest;
   const char *usage;
@@ -64,25 +68,37 @@ typedef struct cflg_flg {
   const char *name_long;
   char name;
   bool has_seen;
-  struct cflg_flg *next;
-} cflg_flg_t;
+  cflg_flg_t *next;
+};
 
-typedef struct {
+typedef struct cflg_flgset cflg_flgset_t;
+
+/* Function pointer type for handling help requests when parsing '-h' or '--help'.
+   Called with a cflg_flgset_t* containing flag definitions to display help output. */
+typedef void (*cflg_usage_t)(cflg_flgset_t *);
+
+struct cflg_flgset {
   bool parsed;
   int narg;    // number of arguments remaining after flags have been processed.
   char **args; // non-flag arguments after flags have beeen processed.
   const char *prog_name; // name of the program
   cflg_flg_t *flgs;
-} cflg_flgset_t;
+  cflg_usage_t usage; // if not specified, falls back to default usage function (see cflg_print_help_)
+};
 
 #define CFLG_FALLBACK(s, def) ((s) ? (s) : (def))
 
 // cflg_new_flag has been implemented using c99 compound literals
 #define cflg_new_flag(flgset, parse_function, var, opt, opt_long, arg, desc)   \
-  (flgset)->flgs = &(cflg_flg_t) {                                             \
-    .name = (opt), .name_long = (opt_long), .parser = (parse_function),        \
-    .dest = (var), .usage = (desc), .arg_name = (arg), .next = (flgset)->flgs  \
-  }
+  ((flgset)->flgs = &(cflg_flg_t) {                                             \
+                    .name = (opt), \
+                    .name_long = (opt_long), \
+                    .parser = (parse_function),\
+                    .dest = (var),\
+                    .usage = (desc), \
+                    .arg_name = (arg), \
+                    .next = (flgset)->flgs  \
+                  })
 
 #define cflg_flgset_int(flgset, p, name, name_long, arg_name, usage)           \
   cflg_new_flag((flgset), (cflg_parse_int), (int *)(p), (name), (name_long),   \
@@ -150,8 +166,6 @@ int cflg_parse_string(cflg_parser_context_t *ctx);
 // ******                                  ******
 //
 
-// an argument was forced but not needed
-#define CFLG_ERR_ARG_FORCED -3
 // invalid option error value
 #define CFLG_ERR_OPT_INVALID -4
 // a long option cannot be auto completed
@@ -161,8 +175,8 @@ int cflg_parse_string(cflg_parser_context_t *ctx);
 #define CFLG_ISEMPTY(s) (((s) == NULL) || (*(s) == '\0'))
 #define CFLG_STRNCMP(s1, s2, n) ((s1 && s2) ? (strncmp(s1, s2, n)) : (-1))
 
-#define CFLG_ISHELP(f, l)                                                      \
-  (l == 1 && f[0] == 'h') || (l == strlen("help") && !memcmp(f, "help", l))
+#define CFLG_ISHELP(f) ((f) == 'h') 
+#define CFLG_ISHELP_LONG(f,l) ((l) == strlen("help") && !memcmp((f), "help", l))
 
 #define CFLG_FOREACH(item, flgs)                                               \
   for (cflg_flg_t *item = (flgs); item != NULL; item = item->next)
@@ -170,6 +184,23 @@ int cflg_parse_string(cflg_parser_context_t *ctx);
 void cflg_print_flags(cflg_flg_t *flags);
 void cflg_print_err(int err_code, const char *prog_name, bool is_short,
                     const char *opt, size_t opt_len, const char *arg);
+
+
+// default print usage function
+// prints usage string and all flag names (short and long)
+void cflg_print_help_(cflg_flgset_t *fset) {
+    printf("Usage: %s [OPTION]... [COMMAND]...\n\n", fset->prog_name);
+    cflg_print_flags(fset->flgs);
+}
+
+int cflg_parse_help(cflg_parser_context_t *ctx) {
+    if (ctx->is_arg_forced) {
+        return CFLG_ERR_ARG_FORCED;
+    }
+    cflg_flgset_t* fset = (cflg_flgset_t*) ctx->dest;
+    fset->usage(fset);
+    return OK_NO_ARG;
+}
 
 #ifdef CFLG_DEBUG
 #define debug(fmt, args...)                                                    \
@@ -243,11 +274,19 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
 #endif
   debug("prog_name set to %s\n", fset->prog_name);
 
+// TODO: instead of malloc, use in-place shifting on argv
   fset->narg = 0;
   fset->args = (char **)malloc(argc * sizeof(char *));
   if (!fset->args) {
     return -1;
   }
+
+  // if user didn't provide user functions, fall back to default 
+  if (fset->usage == NULL) {
+        fset->usage = cflg_print_help_;
+  }
+
+  cflg_new_flag(fset, cflg_parse_help, fset, 'h', "help", NULL, "print this help");
 
   int i = 0;
   for (; i < argc; ++i) {
@@ -265,8 +304,9 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
 
     // if it's a long flag
     if (argv[i][1] == '-') {
-      if (len == 2)
+      if (len == 2) {
         break; // -- => stop parsing flags
+      }
       debug("long flag is detected\n");
 
       // search for '=' in flag
@@ -283,19 +323,6 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
         arg++;
       }
 
-      // if flag is "--help" print help
-      if (CFLG_ISHELP(flag, flag_len)) {
-        if (arg_forced) {
-          debug("argument forced on --help option\n");
-          cflg_print_err(CFLG_ERR_ARG_FORCED, fset->prog_name, false, flag,
-                         flag_len, arg);
-        }
-        debug("--help detected printing flags and "
-              "exiting\n");
-        cflg_print_flags(fset->flgs);
-        exit(0);
-      }
-
       debug("looking up the list for a matching flag\n");
       cflg_flg_t *f = NULL;
       int res = cflg_flg_find(fset->flgs, flag, flag_len, &f);
@@ -308,6 +335,7 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
       }
       ctx.has_been_parsed = f->has_seen;
       ctx.dest = f->dest;
+      ctx.is_arg_forced = arg_forced;
 
       res = f->parser(&ctx);
       switch (res) {
@@ -327,16 +355,18 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
       }
 
       f->has_seen = true;
+
+      if (CFLG_ISHELP_LONG(f->name_long, CFLG_STRLEN(f->name_long))) {
+            debug("'--help' was requested, exiting program...\n");
+            exit(0);
+      }
     }
     // if it's a short flag
     else {
       // iterate over all short flags
       for (int j = 1; j < len; ++j) {
         char *flag = argv[i] + j;
-        if (CFLG_ISHELP(flag, 1)) {
-          cflg_print_flags(fset->flgs);
-          exit(0);
-        }
+
         cflg_flg_t *f = NULL;
         CFLG_FOREACH(i, fset->flgs) {
           if (i->name == *flag) {
@@ -373,6 +403,11 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
         }
 
         f->has_seen = true;
+
+        if (CFLG_ISHELP(f->name)) {
+            debug("'-h' was requested, exiting program...\n");
+            exit(0);
+        }
         if (break_loop) {
           break;
         }
@@ -385,6 +420,9 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
     fset->narg++;
   }
 
+  // remove help flag, because after returning from this functio
+  // it will be deallocated
+  fset->flgs = fset->flgs->next;
   fset->parsed = true;
   return 0;
 }

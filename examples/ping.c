@@ -10,6 +10,12 @@
 
 #define btoa(x) ((x) ? "true" : "false")
 
+void ping_usage(flgset_t *fs){
+    printf("Usage\n");
+    printf("  %s [options...] <destination>\n\n", fs->prog_name);
+    printf("Options:\n");
+    cflg_print_flags(fs->flgs);
+}
 int main(int argc, char *argv[]) {
     // --- Variable Definitions (Grouped by Type) ---
     // Booleans
@@ -65,6 +71,7 @@ int main(int argc, char *argv[]) {
     // String Flags
     flgset_string(&fset, &interface, 'I', "interface", "<IFACE>", "Send packets through this interface.");
 
+    fset.usage = ping_usage;
     // --- Parsing ---
     struct timespec start, end;
     timespec_get(&start, TIME_UTC);
