@@ -270,10 +270,15 @@ int main(int argc, char *argv[]) {
   printf("  %-*s %s\n", label_width, "Read-Only Root FS:", btoa(read_only));
   print_and_free_list("Capabilities to Add:", &caps_to_add, label_width);
   print_and_free_list("Capabilities to Drop:", &caps_to_drop, label_width);
+  printf("\n");
+
+  printf("Non Flags:\n");
+  for (int i = 0; i < fset.narg; ++i) {
+      printf(" %-*s\n", label_width, fset.args[i]);
+  }
   printf("\n----------------------------------\n");
 
-  double elapsed =
-      (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
+  double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
   printf("Flags parsed in %.9f seconds\n", elapsed);
 
   return 0;

@@ -203,6 +203,12 @@ int main(int argc, char *argv[]) {
   }
   printf("\n");
 
+  printf("Non Flags:\n");
+  for (int i = 0; i < fset.narg; ++i) {
+      printf(" %s\n", fset.args[i]);
+  }
+  printf("\n----------------------------------\n");
+
   double elapsed =
       (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
   printf("Flags parsed in %.9f seconds\n", elapsed);

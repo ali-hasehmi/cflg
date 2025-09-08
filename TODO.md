@@ -5,7 +5,7 @@
 - [x] Add usage function to print arbitrary usage message
 - [ ] Refactor flgset_parse function
 - [ ] Add a mechansim for flags to have aliases
-- [ ] flgset_parse uses malloc for storing non-flag args, use something else instead
+- [x] flgset_parse uses malloc for storing non-flag args, use something else instead
 - [ ] print the list of matching options in the case of ambiguity
 
 ## Bugs:

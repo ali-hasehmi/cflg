@@ -79,8 +79,8 @@ typedef void (*cflg_usage_t)(cflg_flgset_t *);
 
 struct cflg_flgset {
   bool parsed;
-  int narg;    // number of arguments remaining after flags have been processed.
-  char **args; // non-flag arguments after flags have beeen processed.
+  int narg;    // Number of non-flag arguments in args, including argv[0]
+  char **args; // Pointer to argv used for parsing
   const char *prog_name; // name of the program
   cflg_flg_t *flgs;
   cflg_usage_t usage; // if not specified, falls back to default usage function (see cflg_print_help_)
@@ -274,12 +274,8 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
 #endif
   debug("prog_name set to %s\n", fset->prog_name);
 
-// TODO: instead of malloc, use in-place shifting on argv
   fset->narg = 0;
-  fset->args = (char **)malloc(argc * sizeof(char *));
-  if (!fset->args) {
-    return -1;
-  }
+  fset->args = argv;
 
   // if user didn't provide user functions, fall back to default 
   if (fset->usage == NULL) {
@@ -288,15 +284,18 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
 
   cflg_new_flag(fset, cflg_parse_help, fset, 'h', "help", NULL, "print this help");
 
-  int i = 0;
+  int last_nonopt = 0;
+  int i = 1; // argv[0] is always assumed to be the name of the executable
   for (; i < argc; ++i) {
 
     int len = strlen(argv[i]);
 
     // if not a flag, add it to args and continue
     if (len < 2 || argv[i][0] != '-') {
-      fset->args[fset->narg] = argv[i];
-      fset->narg++;
+      last_nonopt++;
+      char *tmp = argv[i];
+      argv[i] = argv[last_nonopt];
+      argv[last_nonopt] = tmp;
       continue;
     }
 
@@ -392,8 +391,14 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
 
         int res = f->parser(&ctx);
         switch (res) {
+
         case CFLG_OK:
+            if (break_loop) {
+                i++;
+            }
+            break_loop = true;
           break;
+
         case CFLG_OK_NO_ARG:
           break_loop = false;
           break;
@@ -416,13 +421,16 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
   }
 
   for (i = i + 1; i < argc; ++i) {
-    fset->args[fset->narg] = argv[i];
-    fset->narg++;
+    last_nonopt++;
+    char *tmp = argv[i];
+    argv[i] = argv[last_nonopt];
+    argv[last_nonopt] = tmp;
   }
 
-  // remove help flag, because after returning from this functio
+  // remove help flag, because after returning from this function
   // it will be deallocated
   fset->flgs = fset->flgs->next;
+  fset->narg = last_nonopt + 1;
   fset->parsed = true;
   return 0;
 }
@@ -440,7 +448,9 @@ int cflg_parse_bool(cflg_parser_context_t *ctx) {
 }
 
 int cflg_parse_int(cflg_parser_context_t *ctx) {
-
+  if (ctx->arg == NULL) {
+     return CFLG_ERR_ARG_NEEDED;
+  }
   char *endptr;
   int n = strtol(ctx->arg, &endptr, 0);
   if (*endptr != '\0') {
@@ -453,7 +463,9 @@ int cflg_parse_int(cflg_parser_context_t *ctx) {
 }
 
 int cflg_parse_uint(cflg_parser_context_t *ctx) {
-
+  if (ctx->arg == NULL) {
+    return CFLG_ERR_ARG_NEEDED;
+  }
   char *endptr;
   uint n = strtoul(ctx->arg, &endptr, 0);
   if (*endptr != '\0') {
@@ -466,6 +478,9 @@ int cflg_parse_uint(cflg_parser_context_t *ctx) {
 }
 
 int cflg_parse_int64(cflg_parser_context_t *ctx) {
+  if (ctx->arg == NULL) {
+     return CFLG_ERR_ARG_NEEDED;
+  }
 
   char *endptr;
   int64_t n = strtoll(ctx->arg, &endptr, 0);
@@ -479,7 +494,9 @@ int cflg_parse_int64(cflg_parser_context_t *ctx) {
 }
 
 int cflg_parse_uint64(cflg_parser_context_t *ctx) {
-
+  if (ctx->arg == NULL) {
+    return CFLG_ERR_ARG_NEEDED;
+  }
   char *endptr;
   uint64_t n = strtoull(ctx->arg, &endptr, 0);
   if (*endptr != '\0') {
@@ -492,7 +509,9 @@ int cflg_parse_uint64(cflg_parser_context_t *ctx) {
 }
 
 int cflg_parse_float(cflg_parser_context_t *ctx) {
-
+  if (ctx->arg == NULL) {
+    return CFLG_ERR_ARG_NEEDED;
+  }
   char *endptr;
   float n = strtof(ctx->arg, &endptr);
   if (*endptr != '\0') {
@@ -505,7 +524,9 @@ int cflg_parse_float(cflg_parser_context_t *ctx) {
 }
 
 int cflg_parse_double(cflg_parser_context_t *ctx) {
-
+  if (ctx->arg == NULL) {
+    return CFLG_ERR_ARG_NEEDED;
+  }
   char *endptr;
   double n = strtod(ctx->arg, &endptr);
   if (*endptr != '\0') {
@@ -518,6 +539,9 @@ int cflg_parse_double(cflg_parser_context_t *ctx) {
 }
 
 int cflg_parse_string(cflg_parser_context_t *ctx) {
+  if (ctx->arg == NULL) {
+    return CFLG_ERR_ARG_NEEDED;
+  }
   *(char **)ctx->dest = (char *)ctx->arg;
   return CFLG_OK;
 }

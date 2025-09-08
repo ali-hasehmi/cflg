@@ -71,7 +71,9 @@ int main(int argc, char *argv[]) {
     // String Flags
     flgset_string(&fset, &interface, 'I', "interface", "<IFACE>", "Send packets through this interface.");
 
+    // Customize the usage message 
     fset.usage = ping_usage;
+
     // --- Parsing ---
     struct timespec start, end;
     timespec_get(&start, TIME_UTC);
@@ -106,6 +108,13 @@ int main(int argc, char *argv[]) {
     printf("  %-*s %d\n", label_width, "Time To Live (TTL):", ttl);
     printf("  %-*s %u\n", label_width, "Identifier (PID):", ident);
     printf("  %-*s %d\n", label_width, "Firewall Mark:", mark);
+    printf("\n");
+
+    printf("Non Flags:\n");
+    for (int i = 0; i < fset.narg; ++i) {
+        printf(" %-*s\n", label_width, fset.args[i]);
+    }
+    
     printf("\n----------------------------------\n");
 
     double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
