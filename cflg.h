@@ -38,11 +38,15 @@
 #define ERR_ARG_INVALID CFLG_ERR_ARG_INVALID
 #endif
 
+// stores the state of each command-line option while parsing
 typedef struct {
-  bool has_been_parsed;
-  bool is_arg_forced;
-  void *dest;
-  const char *arg; // if flags needed an argument
+  const char *opt;      // points the current command-line option, it might not be null terminated, always check opt_len.
+  size_t opt_len;       // stores the length of the current command-line option.
+  bool is_opt_short;    // stores whether the option is short(e.g. -v) or long(e.g. --verbose, --v, --ver).
+  bool has_been_parsed; // stores whether the corresponding flag was used before
+  bool is_arg_forced;   // is option's argument forced (e.g. '--verbose=3' ).
+  void *dest;           // points to the user specified memory
+  const char *arg;      // points to the option's argument which is always null terminated, NULL if not provided. 
 } cflg_parser_context_t;
 
 /* parser function type
@@ -56,7 +60,7 @@ typedef int (*cflg_parser_t)(cflg_parser_context_t *);
 #define CFLG_OK_NO_ARG 1        /* Successfully parsed option; no argument was required or taken */
 #define CFLG_ERR_ARG_NEEDED -1  /* Parsing failed: option requires an argument, but none was provided */
 #define CFLG_ERR_ARG_INVALID -2 /* Parsing failed: option's argument was provided but invalid (e.g., wrong format) */
-#define CFLG_ERR_ARG_FORCED -3  /* an argument was forced but not needed */
+#define CFLG_ERR_ARG_FORCED -3  /* Parsing failed: option's argument was forced but not needed */
 
 
 typedef struct cflg_flg cflg_flg_t;
@@ -182,8 +186,7 @@ int cflg_parse_string(cflg_parser_context_t *ctx);
   for (cflg_flg_t *item = (flgs); item != NULL; item = item->next)
 
 void cflg_print_flags(cflg_flg_t *flags);
-void cflg_print_err(int err_code, const char *prog_name, bool is_short,
-                    const char *opt, size_t opt_len, const char *arg);
+void cflg_print_err(int err_code, cflg_flgset_t *fs, cflg_parser_context_t* ctx);
 
 
 // default print usage function
@@ -277,7 +280,7 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
   fset->narg = 0;
   fset->args = argv;
 
-  // if user didn't provide user functions, fall back to default 
+  // if user didn't provide usage function, fall back to default 
   if (fset->usage == NULL) {
         fset->usage = cflg_print_help_;
   }
@@ -308,49 +311,50 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
       }
       debug("long flag is detected\n");
 
+      ctx.is_opt_short = false;
+
       // search for '=' in flag
-      char *arg = strchr(argv[i], '=');
-      bool arg_forced = false;
-      const char *flag = argv[i] + 2;
-      size_t flag_len;
-      if (arg == NULL) { /* no '=' in flag */
-        arg = argv[i + 1];
-        flag_len = len - 2;
+      ctx.arg = strchr(argv[i], '=');
+      ctx.is_arg_forced = false;
+      ctx.opt = argv[i] + 2;
+      if (ctx.arg == NULL) { /* no '=' in flag */
+        ctx.arg = argv[i + 1];
+        ctx.opt_len = len - 2;
       } else {
-        arg_forced = true;
-        flag_len = arg - flag;
-        arg++;
+        ctx.is_arg_forced = true;
+        ctx.opt_len = ctx.arg - ctx.opt;
+        ctx.arg++;
       }
 
       debug("looking up the list for a matching flag\n");
       cflg_flg_t *f = NULL;
-      int res = cflg_flg_find(fset->flgs, flag, flag_len, &f);
+      int res = cflg_flg_find(fset->flgs, ctx.opt, ctx.opt_len, &f);
       if (res != CFLG_OK) {
-        cflg_print_err(res, fset->prog_name, false, flag, flag_len, arg);
+        cflg_print_err(res, fset, &ctx);
       }
 
-      if (!CFLG_ISEMPTY(arg)) {
-        ctx.arg = arg;
+      if (CFLG_ISEMPTY(ctx.arg)) {
+        ctx.arg = NULL;
       }
       ctx.has_been_parsed = f->has_seen;
       ctx.dest = f->dest;
-      ctx.is_arg_forced = arg_forced;
 
       res = f->parser(&ctx);
       switch (res) {
       case CFLG_OK:
-        if (!arg_forced) {
+        if (!ctx.is_arg_forced) {
           i++;
         }
         break;
+
       case CFLG_OK_NO_ARG:
-        if (arg_forced) {
-          cflg_print_err(CFLG_ERR_ARG_FORCED, fset->prog_name, false, flag,
-                         flag_len, arg);
+        if (ctx.is_arg_forced) {
+          cflg_print_err(CFLG_ERR_ARG_FORCED, fset, &ctx); 
         }
         break;
+
       default:
-        cflg_print_err(res, fset->prog_name, false, flag, flag_len, arg);
+        cflg_print_err(res, fset, &ctx);
       }
 
       f->has_seen = true;
@@ -364,28 +368,29 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
     else {
       // iterate over all short flags
       for (int j = 1; j < len; ++j) {
-        char *flag = argv[i] + j;
+        ctx.is_opt_short = true; 
+
+        ctx.opt = argv[i] + j;
+        ctx.opt_len = 1;
 
         cflg_flg_t *f = NULL;
         CFLG_FOREACH(i, fset->flgs) {
-          if (i->name == *flag) {
+          if (i->name == *ctx.opt) {
             f = i;
             break;
           }
         }
         if (f == NULL) {
-          cflg_print_err(CFLG_ERR_OPT_INVALID, fset->prog_name, true, flag, 1,
-                         NULL);
+          cflg_print_err(CFLG_ERR_OPT_INVALID, fset, &ctx); 
         }
 
         bool break_loop = false;
-        char *arg = argv[i] + j + 1;
-        if (CFLG_ISEMPTY(arg)) {
-          arg = argv[i + 1];
+        ctx.arg = argv[i] + j + 1;
+        if (CFLG_ISEMPTY(ctx.arg)) {
+          ctx.arg = argv[i + 1];
           break_loop = true;
         }
 
-        ctx.arg = arg;
         ctx.dest = f->dest;
         ctx.has_been_parsed = f->has_seen;
 
@@ -404,7 +409,7 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
           break;
 
         default:
-          cflg_print_err(res, fset->prog_name, true, flag, 1, arg);
+          cflg_print_err(res, fset, &ctx);
         }
 
         f->has_seen = true;
@@ -601,54 +606,64 @@ void cflg_print_flags(cflg_flg_t *flags) {
   }
 }
 
-void cflg_print_err(int err_code, const char *prog_name, bool is_short,
-                    const char *opt, size_t opt_len, const char *arg) {
+void cflg_print_err(int err_code, cflg_flgset_t *fs, cflg_parser_context_t* ctx) {
 
   // TODO: gnu seems to print different error message
   // base on short or long format is it really
   // necessary in this library?
   //
   //
-  fprintf(stderr, "%s: ", prog_name);
+  fprintf(stderr, "%s: ", fs->prog_name);
 
   const char *invalid_opt_err, *invalid_arg_err, *need_arg_err, *forced_arg_err,
       *ambiguous_opt_err;
-  if (is_short) {
-    invalid_opt_err = "invalid option -- '%.*s'\n";
-    invalid_arg_err = "invalid '%.*s' argument: '%s'\n";
-    need_arg_err = "option requires an argument -- '%.*s'\n";
+  if (ctx->is_opt_short) {
+    invalid_opt_err = "invalid option -- '%.*s'";
+    invalid_arg_err = "invalid '%.*s' argument: '%s'";
+    need_arg_err = "option requires an argument -- '%.*s'";
   } else {
-    invalid_opt_err = "unrecognize option '--%.*s'\n";
-    invalid_arg_err = "invalid --%.*s argument: '%s'\n";
-    need_arg_err = "option '--%.*s' requires an argument\n";
-    forced_arg_err = "option '--%.*s' doesn't allow an argument\n";
-    ambiguous_opt_err = "option '--%.*s' is ambiguous\n";
+    invalid_opt_err = "unrecognize option '--%.*s'";
+    invalid_arg_err = "invalid --%.*s argument: '%s'";
+    need_arg_err = "option '--%.*s' requires an argument";
+    forced_arg_err = "option '--%.*s' doesn't allow an argument";
+    ambiguous_opt_err = "option '--%.*s' is ambiguous;";
   }
 
   switch (err_code) {
 
   case CFLG_ERR_OPT_INVALID:
-    fprintf(stderr, invalid_opt_err, opt_len, opt);
+    fprintf(stderr, invalid_opt_err, ctx->opt_len, ctx->opt);
     break;
 
   case CFLG_ERR_ARG_INVALID:
-    fprintf(stderr, invalid_arg_err, opt_len, opt, arg);
+    fprintf(stderr, invalid_arg_err, ctx->opt_len, ctx->opt, ctx->arg);
     break;
 
   case CFLG_ERR_ARG_NEEDED:
-    fprintf(stderr, need_arg_err, opt_len, opt);
+    fprintf(stderr, need_arg_err, ctx->opt_len, ctx->opt);
     break;
 
   case CFLG_ERR_ARG_FORCED:
-    fprintf(stderr, forced_arg_err, opt_len, opt);
+    fprintf(stderr, forced_arg_err, ctx->opt_len, ctx->opt);
     break;
 
   case CFLG_ERR_OPT_AMBIGUOUS:
-    fprintf(stderr, ambiguous_opt_err, opt_len, opt);
+    fprintf(stderr, ambiguous_opt_err, ctx->opt_len, ctx->opt);
+
+    // find and print all matching options
+    fprintf(stderr, " possibilities:");
+    CFLG_FOREACH(item, fs->flgs) {
+           if (ctx->opt_len < CFLG_STRLEN(item->name_long) &&
+               !CFLG_STRNCMP(item->name_long, ctx->opt, ctx->opt_len)) {
+                    fprintf(stderr, " '--%s'", item->name_long);
+            }
+    }
+
     break;
   }
+  fprintf(stderr, "\n");
 
-  fprintf(stderr, "Try '%s --help' for more information.\n", prog_name);
+  fprintf(stderr, "Try '%s --help' for more information.\n", fs->prog_name);
   exit(1);
 }
 
