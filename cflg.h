@@ -8,7 +8,6 @@
 #ifndef CFLG_H_INCLUDE
 #define CFLG_H_INCLUDE
 
-#define CFLG_IMPLEMENTATION
 
 #include <assert.h>
 #include <ctype.h>
@@ -175,9 +174,17 @@ int cflg_parse_string(cflg_parser_context_t *ctx);
 // a long option cannot be auto completed
 #define CFLG_ERR_OPT_AMBIGUOUS -5
 
+// no more argument to parse, returns from cflg_flgset_parse_one in case of finishing parsing
+#define CFLG_PARSE_FINISH 2 
+// the last argv element that was parsed was a non-flag 
+#define CFLG_PARSE_NONFLG 3
+
 #define CFLG_STRLEN(s) ((s) ? (strlen(s)) : (0))
 #define CFLG_ISEMPTY(s) (((s) == NULL) || (*(s) == '\0'))
 #define CFLG_STRNCMP(s1, s2, n) ((s1 && s2) ? (strncmp(s1, s2, n)) : (-1))
+
+// checks wheter the provided string has the structure of a flag or not
+#define CFLG_IS_NONFLG(s) (CFLG_ISEMPTY((s)) || (s)[0] != '-' || (s)[1] == '\0') 
 
 #define CFLG_ISHELP(f) ((f) == 'h') 
 #define CFLG_ISHELP_LONG(f,l) ((l) == strlen("help") && !memcmp((f), "help", l))
@@ -223,7 +230,7 @@ const char *cflg_find_base(const char *path) {
   return path;
 }
 
-int cflg_flg_find(cflg_flg_t *flgs, const char *opt, int opt_len,
+int cflg_flg_find_long(cflg_flg_t *flgs, const char *opt, int opt_len,
                   cflg_flg_t **res) {
   *res = NULL;
   bool ambiguous = false;
@@ -260,10 +267,172 @@ int cflg_flg_find(cflg_flg_t *flgs, const char *opt, int opt_len,
   return CFLG_ERR_OPT_INVALID;
 }
 
+void cflg_swap_args(char *argv[], int i, int j) {
+    if (i != j) {
+        char *tmp = argv[i];
+        argv[i] = argv[j];
+        argv[j] = tmp;
+    }
+}
+
+int cflg_flgset_parse_one_long(cflg_flgset_t *fs, int argc, char *argv[], 
+                               cflg_parser_context_t *ctx, int *curr_index) {
+
+    // search for '=' in flag
+    ctx->arg = strchr(ctx->opt, '=');
+    // if there is '=' (e.g. --count=3)
+    if (ctx->arg) {
+      ctx->is_arg_forced = true;
+      ctx->opt_len = ctx->arg - ctx->opt;
+      ctx->arg++;
+    } 
+    // if there is NOT '=' (e.g. --count 3)
+    else {
+      ctx->is_arg_forced = false;
+      ctx->opt_len = CFLG_STRLEN(ctx->opt);
+      ctx->arg = argv[*curr_index+1];
+    }
+    
+    debug("looking up the list for a matching flag\n");
+    cflg_flg_t *f = NULL;
+    int res = cflg_flg_find_long(fs->flgs, ctx->opt, ctx->opt_len, &f);
+    if (res != CFLG_OK) {
+      return res;
+    }
+    
+    if (CFLG_ISEMPTY(ctx->arg)) {
+      ctx->arg = NULL;
+    }
+    ctx->has_been_parsed = f->has_seen;
+    ctx->dest = f->dest;
+    
+    res = f->parser(ctx);
+      
+    if (res == CFLG_OK) {
+        ctx->opt = NULL;
+        if (!ctx->is_arg_forced) {
+          ++(*curr_index);
+        }
+      }
+    else if (res == CFLG_OK_NO_ARG) {
+        if (ctx->is_arg_forced) {
+          return CFLG_ERR_ARG_FORCED;
+        }
+        ctx->opt = NULL;
+      }
+    else {
+        // if it's CFLG_ERR_ARG_NEEDED or CFLG_ERR_ARG_INVALID
+        if (!ctx->is_arg_forced) {
+          ++(*curr_index);
+        }
+        return res;
+    }
+
+    f->has_seen = true;
+
+      // if (CFLG_ISHELP_LONG(f->name_long, CFLG_STRLEN(f->name_long))) {
+      //       debug("'--help' was requested, exiting program...\n");
+      //       exit(0);
+      // }
+    return res;
+
+}
+
+int cflg_flgset_parse_one(cflg_flgset_t *fs, int argc, char *argv[],
+                          cflg_parser_context_t *ctx, int *curr_index) {
+    
+    if (fs->parsed) {
+        return CFLG_PARSE_FINISH;
+    }
+    
+    if (*curr_index == argc) {
+        fs->parsed = true;
+        return CFLG_PARSE_FINISH;
+    }
+
+    // Advance to the next argv element
+    if (CFLG_ISEMPTY(ctx->opt)) {
+
+        const char *curr_arg = argv[++(*curr_index)];
+        if (CFLG_IS_NONFLG(curr_arg)) {
+            return CFLG_PARSE_NONFLG;
+        }
+
+        // get rid of the '-'
+        ctx->opt = curr_arg + 1;
+        
+        // if it startes with '--' 
+        if (ctx->opt[0] == '-') {
+            // special argv element '--' means forced end of options
+            // reports end of parsing to the caller
+            if (ctx->opt[1] == '\0') {
+                // prevents further parsing from future calls
+                fs->parsed = true;
+                return CFLG_PARSE_FINISH;
+            }
+
+            // get rid of the second '-'
+            ctx->opt++;
+            ctx->is_opt_short = false;
+        }
+
+        // if it's a short option
+        else {
+            ctx->is_opt_short = true;
+            // short options' length are always 1
+            ctx->opt_len = 1;
+            // this flag is only revelant to long options
+            ctx->is_arg_forced = false;
+        }
+        
+    }
+
+    if (!ctx->is_opt_short) {
+        return cflg_flgset_parse_one_long(fs, argc, argv, 
+                                          ctx, curr_index);
+    }
+
+    
+    cflg_flg_t *f = NULL;
+    CFLG_FOREACH(i, fs->flgs) {
+        if (i->name == *(ctx->opt)) {
+            f = i;
+            break;
+          }
+        }
+    if (f == NULL) {
+        return CFLG_ERR_OPT_INVALID;
+    }
+
+    ctx->arg = ctx->opt + 1;
+    bool advance = false;
+    if (CFLG_ISEMPTY(ctx->arg)) {
+        advance = true;
+        ctx->arg = argv[*curr_index + 1];
+    }
+
+    ctx->has_been_parsed = f->has_seen;
+    ctx->dest = f->dest;
+
+    int res = f->parser(ctx);
+    if (res == CFLG_OK_NO_ARG) {
+        ctx->opt++;
+    } else {
+        // it is either CFLG_OK, CFLG_ERR_ARG_NEEDED or CFLG_ERR_ARG_INVALID
+        if (res == CFLG_OK) {
+            ctx->opt = NULL;
+        }
+        if (advance) {
+            ++(*curr_index);
+        }
+    }
+
+    return res;
+}
 int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
 
   if (fset->parsed)
-    return 0;
+    return argc - fset->narg;
 
   // order:
   // 1. PROGRAM_NAME macro
@@ -288,161 +457,38 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
   cflg_new_flag(fset, cflg_parse_help, fset, 'h', "help", NULL, "print this help");
 
   int last_nonopt = 0;
-  int i = 1; // argv[0] is always assumed to be the name of the executable
-  for (; i < argc; ++i) {
+  int curr_index = 0; // argv[0] is always assumed to be the name of the executable
+  cflg_parser_context_t ctx = {0};
 
-    int len = strlen(argv[i]);
-
-    // if not a flag, add it to args and continue
-    if (len < 2 || argv[i][0] != '-') {
-      last_nonopt++;
-      char *tmp = argv[i];
-      argv[i] = argv[last_nonopt];
-      argv[last_nonopt] = tmp;
-      continue;
-    }
-
-    cflg_parser_context_t ctx = {0};
-
-    // if it's a long flag
-    if (argv[i][1] == '-') {
-      if (len == 2) {
-        break; // -- => stop parsing flags
-      }
-      debug("long flag is detected\n");
-
-      ctx.is_opt_short = false;
-
-      // search for '=' in flag
-      ctx.arg = strchr(argv[i], '=');
-      ctx.is_arg_forced = false;
-      ctx.opt = argv[i] + 2;
-      if (ctx.arg == NULL) { /* no '=' in flag */
-        ctx.arg = argv[i + 1];
-        ctx.opt_len = len - 2;
-      } else {
-        ctx.is_arg_forced = true;
-        ctx.opt_len = ctx.arg - ctx.opt;
-        ctx.arg++;
-      }
-
-      debug("looking up the list for a matching flag\n");
-      cflg_flg_t *f = NULL;
-      int res = cflg_flg_find(fset->flgs, ctx.opt, ctx.opt_len, &f);
-      if (res != CFLG_OK) {
-        cflg_print_err(res, fset, &ctx);
-      }
-
-      if (CFLG_ISEMPTY(ctx.arg)) {
-        ctx.arg = NULL;
-      }
-      ctx.has_been_parsed = f->has_seen;
-      ctx.dest = f->dest;
-
-      res = f->parser(&ctx);
-      switch (res) {
-      case CFLG_OK:
-        if (!ctx.is_arg_forced) {
-          i++;
-        }
-        break;
-
-      case CFLG_OK_NO_ARG:
-        if (ctx.is_arg_forced) {
-          cflg_print_err(CFLG_ERR_ARG_FORCED, fset, &ctx); 
-        }
-        break;
-
-      default:
-        cflg_print_err(res, fset, &ctx);
-      }
-
-      f->has_seen = true;
-
-      if (CFLG_ISHELP_LONG(f->name_long, CFLG_STRLEN(f->name_long))) {
-            debug("'--help' was requested, exiting program...\n");
-            exit(0);
-      }
-    }
-    // if it's a short flag
-    else {
-      // iterate over all short flags
-      for (int j = 1; j < len; ++j) {
-        ctx.is_opt_short = true; 
-
-        ctx.opt = argv[i] + j;
-        ctx.opt_len = 1;
-
-        cflg_flg_t *f = NULL;
-        CFLG_FOREACH(i, fset->flgs) {
-          if (i->name == *ctx.opt) {
-            f = i;
+  for (; ;) {
+        int res = cflg_flgset_parse_one(fset, argc, argv, &ctx, &curr_index);
+        if (res == CFLG_PARSE_FINISH) {
             break;
-          }
         }
-        if (f == NULL) {
-          cflg_print_err(CFLG_ERR_OPT_INVALID, fset, &ctx); 
+        // if it was a non flag
+        if (res == CFLG_PARSE_NONFLG) {
+            cflg_swap_args(argv, curr_index, ++last_nonopt);
+            continue;
         }
-
-        bool break_loop = false;
-        ctx.arg = argv[i] + j + 1;
-        if (CFLG_ISEMPTY(ctx.arg)) {
-          ctx.arg = argv[i + 1];
-          break_loop = true;
-        }
-
-        ctx.dest = f->dest;
-        ctx.has_been_parsed = f->has_seen;
-
-        int res = f->parser(&ctx);
-        switch (res) {
-
-        case CFLG_OK:
-            if (break_loop) {
-                i++;
-            }
-            break_loop = true;
-          break;
-
-        case CFLG_OK_NO_ARG:
-          break_loop = false;
-          break;
-
-        default:
-          cflg_print_err(res, fset, &ctx);
-        }
-
-        f->has_seen = true;
-
-        if (CFLG_ISHELP(f->name)) {
-            debug("'-h' was requested, exiting program...\n");
+        // if there was an error
+        if (res != CFLG_OK && res != CFLG_OK_NO_ARG) {
+            cflg_print_err(res, fset, &ctx);
             exit(0);
         }
-        if (break_loop) {
-          break;
-        }
-      }
-    }
   }
-
-  for (i = i + 1; i < argc; ++i) {
-    last_nonopt++;
-    char *tmp = argv[i];
-    argv[i] = argv[last_nonopt];
-    argv[last_nonopt] = tmp;
+  
+  for (curr_index = curr_index + 1; curr_index < argc; ++curr_index) {
+    cflg_swap_args(argv, curr_index, ++last_nonopt);
   }
 
   // remove help flag, because after returning from this function
   // it will be deallocated
   fset->flgs = fset->flgs->next;
-  fset->narg = last_nonopt + 1;
+  fset->narg = last_nonopt ;
   fset->parsed = true;
-  return 0;
-}
 
-void parseflg(cflg_flgset_t *flgset, char *first, char *second) {
-  for (int i = 1; i < strlen(first); ++i) {
-  }
+  // return the number of processed arguments 
+  return argc - fset->narg;
 }
 
 int cflg_parse_bool(cflg_parser_context_t *ctx) {
@@ -664,7 +710,6 @@ void cflg_print_err(int err_code, cflg_flgset_t *fs, cflg_parser_context_t* ctx)
   fprintf(stderr, "\n");
 
   fprintf(stderr, "Try '%s --help' for more information.\n", fs->prog_name);
-  exit(1);
 }
 
 //

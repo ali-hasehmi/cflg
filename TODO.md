@@ -3,7 +3,7 @@
 - [ ] Create a mechanism to customize output stream of library
 - [x] Create a mechanism to customize help message
 - [x] Add usage function to print arbitrary usage message
-- [ ] Refactor flgset_parse function
+- [x] Refactor flgset_parse function
 - [ ] Add a mechansim for flags to have aliases
 - [x] flgset_parse uses malloc for storing non-flag args, use something else instead
 - [x] Print the list of matching options in the case of ambiguity
