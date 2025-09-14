@@ -28,7 +28,7 @@ typedef struct {
  * @brief Custom parser for the --limit-rate flag.
  * Parses arguments like "100k", "2.5m" into bytes per second.
  */
-int rate_limit_parser(parser_context_t* ctx) {
+int rate_limit_parser(parser_context_t *ctx) {
 
   char *endptr;
   double val = strtod(ctx->arg, &endptr);
@@ -205,7 +205,7 @@ int main(int argc, char *argv[]) {
 
   printf("Non Flags:\n");
   for (int i = 0; i < fset.narg; ++i) {
-      printf(" %s\n", fset.args[i]);
+    printf(" %s\n", fset.args[i]);
   }
   printf("\n----------------------------------\n");
 

@@ -8,7 +8,6 @@
 #ifndef CFLG_H_INCLUDE
 #define CFLG_H_INCLUDE
 
-#define CFLG_IMPLEMENTATION
 
 #include <assert.h>
 #include <ctype.h>
