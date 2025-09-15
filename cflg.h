@@ -8,6 +8,7 @@
 #ifndef CFLG_H_INCLUDE
 #define CFLG_H_INCLUDE
 
+#define CFLG_IMPLEMENTATION
 
 #include <assert.h>
 #include <ctype.h>
@@ -289,6 +290,7 @@ int cflg_flgset_parse_one_long(cflg_flgset_t *fs, int argc, char *argv[], cflg_p
         return res;
     }
 
+    // if ctx->arg is an empty string (e.g. --count=)
     if (CFLG_ISEMPTY(ctx->arg)) {
         ctx->arg = NULL;
     }
@@ -297,22 +299,19 @@ int cflg_flgset_parse_one_long(cflg_flgset_t *fs, int argc, char *argv[], cflg_p
 
     res = f->parser(ctx);
 
-    if (res == CFLG_OK) {
-        ctx->opt = NULL;
-        if (! ctx->is_arg_forced) {
-            ++(*curr_index);
-        }
-    } else if (res == CFLG_OK_NO_ARG) {
+    if (res == CFLG_OK_NO_ARG) {
         if (ctx->is_arg_forced) {
             return CFLG_ERR_ARG_FORCED;
         }
         ctx->opt = NULL;
     } else {
-        // if it's CFLG_ERR_ARG_NEEDED or CFLG_ERR_ARG_INVALID
+        // if it's CFLG_OK, CFLG_ERR_ARG_NEEDED, CFLG_ERR_ARG_INVALID or CFLG_ERR_ARG_FORCED
+        if (res == CFLG_OK) {
+            ctx->opt = NULL;
+        }
         if (! ctx->is_arg_forced) {
             ++(*curr_index);
         }
-        return res;
     }
 
     f->has_seen = true;
@@ -330,15 +329,16 @@ int cflg_flgset_parse_one(cflg_flgset_t *fs, int argc, char *argv[], cflg_parser
         return CFLG_PARSE_FINISH;
     }
 
-    if (*curr_index == argc) {
-        fs->parsed = true;
-        return CFLG_PARSE_FINISH;
-    }
-
     // Advance to the next argv element
     if (CFLG_ISEMPTY(ctx->opt)) {
 
-        const char *curr_arg = argv[++(*curr_index)];
+        ++(*curr_index);
+        if (*curr_index == argc) {
+            fs->parsed = true;
+            return CFLG_PARSE_FINISH;
+        }
+
+        const char *curr_arg = argv[*curr_index];
         if (CFLG_IS_NONFLG(curr_arg)) {
             return CFLG_PARSE_NONFLG;
         }
@@ -366,7 +366,7 @@ int cflg_flgset_parse_one(cflg_flgset_t *fs, int argc, char *argv[], cflg_parser
             ctx->is_opt_short = true;
             // short options' length are always 1
             ctx->opt_len = 1;
-            // this flag is only revelant to long options
+            // this flag is only revelant to long options (always false for non-long options)
             ctx->is_arg_forced = false;
         }
     }
@@ -375,6 +375,7 @@ int cflg_flgset_parse_one(cflg_flgset_t *fs, int argc, char *argv[], cflg_parser
         return cflg_flgset_parse_one_long(fs, argc, argv, ctx, curr_index);
     }
 
+    // ctx->is_opt_short is true, so process the the short option
     cflg_flg_t *f = NULL;
     CFLG_FOREACH(i, fs->flgs) {
         if (i->name == *(ctx->opt)) {
@@ -408,6 +409,8 @@ int cflg_flgset_parse_one(cflg_flgset_t *fs, int argc, char *argv[], cflg_parser
             ++(*curr_index);
         }
     }
+
+    f->has_seen = true;
 
     return res;
 }
@@ -466,7 +469,7 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
     // remove help flag, because after returning from this function
     // it will be deallocated
     fset->flgs   = fset->flgs->next;
-    fset->narg   = last_nonopt;
+    fset->narg   = last_nonopt + 1;
     fset->parsed = true;
 
     // return the number of processed arguments
