@@ -8,7 +8,6 @@
 #ifndef CFLG_H_INCLUDE
 #define CFLG_H_INCLUDE
 
-#define CFLG_IMPLEMENTATION
 
 #include <assert.h>
 #include <ctype.h>
@@ -183,7 +182,7 @@ int cflg_parse_string(cflg_parser_context_t *ctx);
 #define CFLG_IS_NONFLG(s) (CFLG_ISEMPTY((s)) || (s)[0] != '-' || (s)[1] == '\0')
 
 #define CFLG_ISHELP(f)         ((f) == 'h')
-#define CFLG_ISHELP_LONG(f, l) ((l) == strlen("help") && ! memcmp((f), "help", l))
+#define CFLG_ISHELP_LONG(f, l) ((l) == strlen("help") && !memcmp((f), "help", l))
 
 #define CFLG_FOREACH(item, flgs) for (cflg_flg_t *item = (flgs); item != NULL; item = item->next)
 
@@ -218,7 +217,7 @@ int cflg_flg_find_long(cflg_flg_t *flgs, const char *opt, int opt_len, cflg_flg_
     bool ambiguous = false;
 
     CFLG_FOREACH(i, flgs) {
-        if (! CFLG_STRNCMP(i->name_long, opt, opt_len)) {
+        if (!CFLG_STRNCMP(i->name_long, opt, opt_len)) {
             size_t name_len = CFLG_STRLEN(i->name_long);
 
             // if it's an exact match
@@ -300,7 +299,7 @@ int cflg_flgset_parse_one_long(cflg_flgset_t *fs, int argc, char *argv[], cflg_p
         if (res == CFLG_OK) {
             ctx->opt = NULL;
         }
-        if (! ctx->is_arg_forced) {
+        if (!ctx->is_arg_forced) {
             ++(*curr_index);
         }
     }
@@ -362,7 +361,7 @@ int cflg_flgset_parse_one(cflg_flgset_t *fs, int argc, char *argv[], cflg_parser
         }
     }
 
-    if (! ctx->is_opt_short) {
+    if (!ctx->is_opt_short) {
         return cflg_flgset_parse_one_long(fs, argc, argv, ctx, curr_index);
     }
 
@@ -476,8 +475,8 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
 }
 
 int cflg_parse_bool(cflg_parser_context_t *ctx) {
-    if (! ctx->has_been_parsed) {
-        *(bool *) ctx->dest = ! (*(bool *) ctx->dest);
+    if (!ctx->has_been_parsed) {
+        *(bool *) ctx->dest = !(*(bool *) ctx->dest);
     }
     return CFLG_OK_NO_ARG;
 }
@@ -608,18 +607,18 @@ void cflg_print_flags(cflg_flg_t *flags) {
             current_len += printf("  ");
         }
 
-        if (f->name && ! CFLG_ISEMPTY(f->name_long)) {
+        if (f->name && !CFLG_ISEMPTY(f->name_long)) {
             current_len += printf(",");
         } else {
             current_len += printf(" ");
         }
 
-        if (! CFLG_ISEMPTY(f->name_long)) {
+        if (!CFLG_ISEMPTY(f->name_long)) {
             current_len += printf(" --%s", f->name_long);
         }
 
-        if (! CFLG_ISEMPTY(f->arg_name)) {
-            if (! CFLG_ISEMPTY(f->name_long)) {
+        if (!CFLG_ISEMPTY(f->arg_name)) {
+            if (!CFLG_ISEMPTY(f->name_long)) {
                 current_len += printf("=");
             }
             current_len += printf("%s", f->arg_name);
@@ -629,7 +628,7 @@ void cflg_print_flags(cflg_flg_t *flags) {
             printf("%*s", max_width - current_len, "");
         }
 
-        if (! CFLG_ISEMPTY(f->usage)) {
+        if (!CFLG_ISEMPTY(f->usage)) {
             printf("%s", f->usage);
         }
         printf("\n");
@@ -682,8 +681,7 @@ void cflg_print_err(int err_code, cflg_flgset_t *fs, cflg_parser_context_t *ctx)
         // find and print all matching options
         fprintf(stderr, " possibilities:");
         CFLG_FOREACH(item, fs->flgs) {
-            if (ctx->opt_len < CFLG_STRLEN(item->name_long) &&
-                ! CFLG_STRNCMP(item->name_long, ctx->opt, ctx->opt_len)) {
+            if (ctx->opt_len < CFLG_STRLEN(item->name_long) && !CFLG_STRNCMP(item->name_long, ctx->opt, ctx->opt_len)) {
                 fprintf(stderr, " '--%s'", item->name_long);
             }
         }
