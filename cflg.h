@@ -197,15 +197,6 @@ void cflg_print_help_(cflg_flgset_t *fset) {
     cflg_print_flags(fset->flgs);
 }
 
-int cflg_parse_help(cflg_parser_context_t *ctx) {
-    if (ctx->is_arg_forced) {
-        return CFLG_ERR_ARG_FORCED;
-    }
-    cflg_flgset_t *fset = (cflg_flgset_t *) ctx->dest;
-    fset->usage(fset);
-    return OK_NO_ARG;
-}
-
 #ifdef CFLG_DEBUG
 #define debug(fmt, args...) fprintf(stderr, "DEBUG: %s:%d:%s(): " fmt, __FILE__, __LINE__, __func__, ##args)
 #else
@@ -414,6 +405,7 @@ int cflg_flgset_parse_one(cflg_flgset_t *fs, int argc, char *argv[], cflg_parser
 
     return res;
 }
+
 int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
 
     if (fset->parsed)
@@ -439,7 +431,8 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
         fset->usage = cflg_print_help_;
     }
 
-    cflg_new_flag(fset, cflg_parse_help, fset, 'h', "help", NULL, "print this help");
+    bool is_help = false;
+    cflg_flgset_bool(fset, &is_help, 'h', "help", "print this help");
 
     int                   last_nonopt = 0;
     int                   curr_index  = 0; // argv[0] is always assumed to be the name of the executable
@@ -458,6 +451,12 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
         // if there was an error
         if (res != CFLG_OK && res != CFLG_OK_NO_ARG) {
             cflg_print_err(res, fset, &ctx);
+            exit(1);
+        }
+        // if help was requested
+        if (is_help) {
+            fset->usage(fset);
+            is_help = false;
             exit(0);
         }
     }
