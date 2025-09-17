@@ -9,13 +9,8 @@
 #define CFLG_H_INCLUDE
 
 
-#include <assert.h>
-#include <ctype.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <stdbool.h> // bool
+#include <stdint.h>  // uint, uint64_t, int32_t, int64_t
 
 #ifndef CFLG_NO_SHORT_NAMES
 #define parser_context_t cflg_parser_context_t
@@ -40,7 +35,7 @@
 // stores the state of each command-line option while parsing
 typedef struct {
     const char *opt; // points the current command-line option, it might not be null terminated, always check opt_len.
-    size_t      opt_len;         // stores the length of the current command-line option.
+    uint32_t    opt_len;         // stores the length of the current command-line option.
     bool        is_opt_short;    // stores whether the option is short(e.g. -v) or long(e.g. --verbose, --v, --ver).
     bool        has_been_parsed; // stores whether the corresponding flag was used before
     bool        is_arg_forced;   // is option's argument forced (e.g. '--verbose=3' ).
@@ -146,6 +141,9 @@ int cflg_parse_float(cflg_parser_context_t *ctx);
 int cflg_parse_double(cflg_parser_context_t *ctx);
 int cflg_parse_string(cflg_parser_context_t *ctx);
 
+// expose the defualt print flags function
+void cflg_print_flags(cflg_flg_t *flags);
+
 //
 // ******                        ******
 // ******                        ******
@@ -163,6 +161,11 @@ int cflg_parse_string(cflg_parser_context_t *ctx);
 // ******                                  ******
 // ******                                  ******
 //
+//
+
+#include <stdio.h>  // fprintf
+#include <stdlib.h> // strtod, strtof, ...
+#include <string.h> // strlen, strcmp, memcmp
 
 // invalid option error value
 #define CFLG_ERR_OPT_INVALID -4
@@ -186,7 +189,6 @@ int cflg_parse_string(cflg_parser_context_t *ctx);
 
 #define CFLG_FOREACH(item, flgs) for (cflg_flg_t *item = (flgs); item != NULL; item = item->next)
 
-void cflg_print_flags(cflg_flg_t *flags);
 void cflg_print_err(int err_code, cflg_flgset_t *fs, cflg_parser_context_t *ctx);
 
 // default print usage function
@@ -196,23 +198,16 @@ void cflg_print_help_(cflg_flgset_t *fset) {
     cflg_print_flags(fset->flgs);
 }
 
-#ifdef CFLG_DEBUG
-#define debug(fmt, args...) fprintf(stderr, "DEBUG: %s:%d:%s(): " fmt, __FILE__, __LINE__, __func__, ##args)
-#else
-#define debug(fmt, args...) /* Don't do anything in release builds */
-#endif
-
 const char *cflg_find_base(const char *path) {
     for (int i = strlen(path) - 1; i >= 0; --i) {
         if (path[i] == '/' || path[i] == '\\') {
-            debug("/ or \\ found at %d in %s\n", i, path);
             return path + i + 1;
         }
     }
     return path;
 }
 
-int cflg_flg_find_long(cflg_flg_t *flgs, const char *opt, int opt_len, cflg_flg_t **res) {
+int cflg_flg_find_long(cflg_flg_t *flgs, const char *opt, uint32_t opt_len, cflg_flg_t **res) {
     *res           = NULL;
     bool ambiguous = false;
 
@@ -273,7 +268,6 @@ int cflg_flgset_parse_one_long(cflg_flgset_t *fs, int argc, char *argv[], cflg_p
         ctx->arg           = argv[*curr_index + 1];
     }
 
-    debug("looking up the list for a matching flag\n");
     cflg_flg_t *f   = NULL;
     int         res = cflg_flg_find_long(fs->flgs, ctx->opt, ctx->opt_len, &f);
     if (res != CFLG_OK) {
@@ -306,10 +300,6 @@ int cflg_flgset_parse_one_long(cflg_flgset_t *fs, int argc, char *argv[], cflg_p
 
     f->has_seen = true;
 
-    // if (CFLG_ISHELP_LONG(f->name_long, CFLG_STRLEN(f->name_long))) {
-    //       debug("'--help' was requested, exiting program...\n");
-    //       exit(0);
-    // }
     return res;
 }
 
@@ -420,7 +410,6 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
 #else
     fset->prog_name = PROGRAM_NAME;
 #endif
-    debug("prog_name set to %s\n", fset->prog_name);
 
     fset->narg = 0;
     fset->args = argv;
@@ -590,7 +579,6 @@ void cflg_print_flags(cflg_flg_t *flags) {
         }
     }
     max_width += 15;
-    debug("maximum len is %d\n", max_width);
 
     // print flags
     CFLG_FOREACH(f, flags) {
