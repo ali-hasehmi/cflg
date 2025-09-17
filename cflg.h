@@ -111,7 +111,7 @@ struct cflg_flgset {
                   CFLG_FALLBACK((arg_name), "float"), (usage));
 
 #define cflg_flgset_uint(flgset, p, name, name_long, arg_name, usage)                                                  \
-    cflg_new_flag((flgset), (cflg_parse_uint), (uint *) (p), (name), (name_long), CFLG_FALLBACK((arg_name), "uint"),   \
+    cflg_new_flag((flgset), (cflg_parse_uint), (unsigned int *) (p), (name), (name_long), CFLG_FALLBACK((arg_name), "uint"),   \
                   (usage));
 
 #define cflg_flgset_int64(flgset, p, name, name_long, arg_name, usage)                                                 \
@@ -490,12 +490,12 @@ int cflg_parse_uint(cflg_parser_context_t *ctx) {
         return CFLG_ERR_ARG_NEEDED;
     }
     char *endptr;
-    uint  n = strtoul(ctx->arg, &endptr, 0);
+    unsigned int  n = strtoul(ctx->arg, &endptr, 0);
     if (*endptr != '\0') {
         return CFLG_ERR_ARG_INVALID;
     }
 
-    *(uint *) ctx->dest = n;
+    *(unsigned int *) ctx->dest = n;
 
     return CFLG_OK;
 }
