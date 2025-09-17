@@ -1,13 +1,13 @@
 # cflg - Simple, STB-Style Flag Parsing for C
 
 cflg is a single-header [stb-style](https://github.com/nothings/stb/blob/master/docs/stb_howto.txt) C library for parsing command-line flags, inspired by Go's flag package. It’s simple, uses no dynamic memory (stack-only), and integrates easily into any C99+ project. Key features:
-- Drop-in: Just include `cflg.h` with `CFLG_IMPLEMENTATION`.
-- No malloc: All parsing happens on the stack.
-- Direct binding: Flags map to your variables (bool, int, string, etc.).
-- Automatic `--help`: Generates a help message from flag definitions.
-- Aggregated short options: Supports `-vqc` as `-v -q -c`.
-- Long option completion: Accepts partial matches (e.g., `--he` for `--help` if unambiguous).
-- Custom parsers: Support complex types (e.g., `--memory=512m`).
+- **Drop-in:** Just include `cflg.h` with `CFLG_IMPLEMENTATION`.
+- **No malloc:** All parsing happens on the stack.
+- **Direct binding:** Flags map to your variables (bool, int, string, etc.).
+- **Automatic `--help`:** Generates a help message from flag definitions.
+- **Aggregated short options:** Supports `-vqc` as `-v -q -c`.
+- **Long option completion:** Accepts partial matches (e.g., `--he` for `--help` if unambiguous).
+- **Custom parsers:** Support complex types (e.g., `--memory=512m`).
 
 Unlike `getopt` (verbose, manual help) or `argp` (complex, GNU-only), cflg offers a modern, portable API with minimal setup.
 
@@ -64,9 +64,11 @@ gcc main.c -o greet
 #
 #  -h, --help             print this help
 #  -l, --loud             Greet loudly
-#  -n, --name=<NAME>      Name to greet```
+#  -n, --name=<NAME>      Name to greet
+``` 
 
 Check the `examples` folder for real-world demos.
+
 ## Notes
 - **Positional Arguments**: Access via `fset.narg` (count) and `fset.args` (array, rearranged to place positionals first after `argv[0]`).
 - **Custom Parsers**: Use `cflg_flgset_func` for custom types (see `cflg.h` for details).
