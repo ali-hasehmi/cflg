@@ -1,3 +1,169 @@
+/*
+ * cflg - Simple, STB-Style Command-Line Flag Parsing for C
+ *
+ * Version: v1.0, Repository: `https://github.com/ali-hasehmi/cflg`
+ * Copyright: (c) 2025 Alireza G.Hashemi. Licensed under MIT (see LICENSE file).
+ *
+ * Overview:
+ * -------------
+ *   cflg is a single-header C library for command-line flag parsing, inspired by Go's
+ *   flag package. It provides a modern, efficient API that is malloc-free (stack-only),
+ *   portable across C99+ compilers, and designed for simplicity in integration,
+ *   extensibility and use.
+ *   The library emphasizes direct binding of flags to user variables, automatic help
+ *   generation, and extensibility through custom parsers, making it ideal for CLI tools
+ *   where reliability and minimal overhead are critical.
+ *
+ * Features:
+ * -------------
+ *   - Direct variable binding: Flags map to your bool, int, string, float, etc., variables.
+ *   - Automatic --help: Generates usage messages from flag definitions.
+ *   - Aggregated short options: Parses -vqc as separate -v -q -c.
+ *   - Long option completion: Resolves --he to --help if unambiguous.
+ *   - Custom parsers: Handles complex types like --memory=512m.
+ *   - Positional rearrangement: Moves non-options first after argv[0].
+ *   - Duplicate prevention: Tracks parsed flags with has_been_parsed.
+ *   - Numeric parsing: Uses strtod and variants for robust integer/float handling.
+ *
+ * Usage:
+ * -------------
+ *   1. Copy cflg.h into your project directory.
+ *
+ *   2. In one C file (e.g., main.c), define:
+ *
+ *   ```c
+ *      #define CFLG_IMPLEMENTATION
+ *      #include "cflg.h"
+ *   ```
+ *
+ *   3. Initialize a cflg_flgset_t and define flags:
+ *
+ *   ```c
+ *      cflg_flgset_t fset = {0};
+ *      cflg_flgset_string(&fset, &my_string, 's', "string", "<VAL>", "Description");
+ *      cflg_flgset_bool(&fset, &my_bool, 'b', "bool", "Description");
+ *   ```
+ *
+ *   4. Parse arguments with cflg_flgset_parse(&fset, argc, argv).
+ *
+ *   5. Access values via bound variables and positionals via fset.narg/fset.args.
+ *   See README.md for quick-start examples or examples/ (wget.c, docker.c, ping.c)
+ *   for advanced usage.
+ *
+ * Configuration:
+ * -------------
+ *
+ *   - PROGRAM_NAME: Sets the program name in usage messages (default: argv[0]).
+ *     Use this for custom binaries or when argv[0] is unreliable.
+ *
+ *   - CFLG_NO_SHORT_NAMES: Disables short aliases (e.g., use cflg_flgset_bool
+ *     instead of flgset_bool) to avoid naming conflicts with other libraries.
+ *     Ideal for large projects or when integrating with conflicting APIs.
+ *
+ * How To Extend
+ * -------------
+ * cflg is fully extensible for custom data types (e.g., durations like -t 5m or
+ * --time=12s) via two methods: using cflg_flgset_func for one-off parsers or
+ * creating a wrapper header for reusable macros.
+ *
+ *   Method 1: Using cflg_flgset_func
+ *
+ *     Define a custom parser function (type cflg_parser_t) that processes the
+ *     argument in cflg_parser_context_t(see its defnintion) and stores the result in ctx->dest. Use
+ *     cflg_flgset_func to bind the parser to a flag.
+ *
+ *     Example (duration parser for "5m", "2h30m"):
+ *     [WARNING: This example is AI Generated, never use this code if you don't understand it]
+ *
+ *     ```c
+ *        int parse_duration(cflg_parser_context_t *ctx) {
+ *          if (!ctx->arg) return CFLG_ERR_ARG_NEEDED;
+ *          long long duration = 0;
+ *          char *p = ctx->arg, *end;
+ *          while (*p) {
+ *            long val = strtol(p, &end, 10);
+ *            if (p == end) return CFLG_ERR_INVALID_ARG;
+ *            switch (*end) {
+ *              case 'h': duration += val * 3600; break;
+ *              case 'm': duration += val * 60; break;
+ *              case 's': duration += val; break;
+ *              default: return CFLG_ERR_INVALID_ARG;
+ *            }
+ *            p = end + 1;
+ *          }
+ *          *(long long *)ctx->dest = duration;
+ *          ctx->has_been_parsed = true;
+ *          return CFLG_OK;
+ *        }
+ *     ```
+ *
+ *     Usage:
+ *
+ *     ```c
+ *       long long timeout = 0;
+ *       cflg_flgset_t fset = {0};
+ *       cflg_flgset_func(&fset, &timeout, 't', "timeout", "<DURATION>", "Timeout (e.g., 5m)", parse_duration);
+ *       cflg_flgset_parse(&fset, argc, argv);
+ *     ```
+ *
+ *   Method 2: Creating a Wrapper Header File
+ *
+ *     Create a header (e.g., cflg-wrapper.h) to define reusable macros for custom
+ *     types using cflg_new_flag. This maps new flag types (e.g., cflg_flgset_duration)
+ *     to a default parser, simplifying usage across projects.
+ *
+ *     Example (cflg-wrapper.h):
+ *     [WARNING: This example is AI Generated, never use this code if you don't understand it]
+ *
+ *     ```c
+ *       #ifndef CFLG_WRAPPER_H
+ *       #define CFLG_WRAPPER_H
+ *       #include "cflg.h"
+ *       #define cflg_flgset_duration(flgset, var, opt, opt_long, arg, desc) \
+ *         cflg_new_flag(flgset, parse_duration, var, opt, opt_long, arg, desc)
+ *       #endif
+ *      // parse_duration implementation... 
+ *      // it is same as the above example...
+ *      // ...
+ *      // ...
+ *     ```
+ *
+ *     Usage:
+ *     ```c
+ *       #include "cflg-wrapper.h"
+ *       long long timeout = 0;
+ *       cflg_flgset_t fset = {0};
+ *       cflg_flgset_duration(&fset, &timeout, 't', "timeout", "<DURATION>", "Timeout (e.g., 5m)");
+ *       cflg_flgset_parse(&fset, argc, argv);
+ *     ```
+ *
+ *     This method is ideal for libraries or large projects needing consistent custom
+ *     types across multiple files.
+ *
+ * Return Codes (from cflg_parser_t):
+ * -------------
+ *   - CFLG_OK: Option parsed, argument consumed.
+ *   - CFLG_OK_NO_ARG: Option parsed, no argument needed.
+ *   - CFLG_ERR_ARG_NEEDED: Requires argument, none provided.
+ *   - CFLG_ERR_ARG_INVALID: Argument invalid (e.g., wrong format).
+ *   - CFLG_ERR_ARG_FORCED: Argument consumption is mandatory, but you don't need it
+ *     even if `CFLG_OK_NO_ARG` is returned, automatically generates error
+ *
+ * Dependencies: stdint.h ,stdbool.h, stdio.h, string.h, stdlib.h (for strtod parsing) (C99+).
+ *
+ * Notes:
+ * -------------
+ *   - Positional arguments are rearranged to follow argv[0] in fset.args,
+ *     with count in fset.narg. Avoid re-parsing argv after cflg_flgset_parse.
+ *   - Custom parsers extend via cflg_flgset_func; see examples/ for usage.
+ *   - Aggregated short options (-vqc) are split into individual flags.
+ *   - Long option completion resolves unambiguous prefixes (e.g., --he for --help).
+ *   - Numeric parsing uses strtod and variants for safe, locale-aware int/float handling.
+ *
+ *
+ *
+ */
+
 //
 // ******                          ******
 // ******                          ******
@@ -7,7 +173,6 @@
 //
 #ifndef CFLG_H_INCLUDE
 #define CFLG_H_INCLUDE
-
 
 #include <stdbool.h> // bool
 #include <stdint.h>  // uint, uint64_t, int32_t, int64_t
@@ -34,13 +199,24 @@
 
 // stores the state of each command-line option while parsing
 typedef struct {
-    const char *opt; // points the current command-line option, it might not be null terminated, always check opt_len.
-    uint32_t    opt_len;         // stores the length of the current command-line option.
-    bool        is_opt_short;    // stores whether the option is short(e.g. -v) or long(e.g. --verbose, --v, --ver).
-    bool        has_been_parsed; // stores whether the corresponding flag was used before
-    bool        is_arg_forced;   // is option's argument forced (e.g. '--verbose=3' ).
-    void       *dest;            // points to the user specified memory
-    const char *arg; // points to the option's argument which is always null terminated, NULL if not provided.
+    const char *opt; // points the current command-line option,
+                     // always check opt_len, it might not be null terminated.
+
+    uint32_t opt_len; // stores the length of the current command-line option.
+                      // always 1, if option is short
+
+    bool is_opt_short; // stores whether the option is short(e.g. -v)
+                       // or long(e.g. --verbose, --v, --ver).
+
+    bool has_been_parsed; // stores whether the corresponding flag was used before
+
+    bool is_arg_forced; // is option's argument forced (e.g. '--verbose=3' ).
+
+    void *dest; // points to the user specified memory
+
+    const char *arg; // points to the option's argument
+                     // which is always null terminated, NULL if not provided.
+
 } cflg_parser_context_t;
 
 /* parser function type
@@ -111,8 +287,8 @@ struct cflg_flgset {
                   CFLG_FALLBACK((arg_name), "float"), (usage));
 
 #define cflg_flgset_uint(flgset, p, name, name_long, arg_name, usage)                                                  \
-    cflg_new_flag((flgset), (cflg_parse_uint), (unsigned int *) (p), (name), (name_long), CFLG_FALLBACK((arg_name), "uint"),   \
-                  (usage));
+    cflg_new_flag((flgset), (cflg_parse_uint), (unsigned int *) (p), (name), (name_long),                              \
+                  CFLG_FALLBACK((arg_name), "uint"), (usage));
 
 #define cflg_flgset_int64(flgset, p, name, name_long, arg_name, usage)                                                 \
     cflg_new_flag((flgset), (cflg_parse_int64), (int64_t *) (p), (name), (name_long),                                  \
@@ -489,8 +665,8 @@ int cflg_parse_uint(cflg_parser_context_t *ctx) {
     if (ctx->arg == NULL) {
         return CFLG_ERR_ARG_NEEDED;
     }
-    char *endptr;
-    unsigned int  n = strtoul(ctx->arg, &endptr, 0);
+    char        *endptr;
+    unsigned int n = strtoul(ctx->arg, &endptr, 0);
     if (*endptr != '\0') {
         return CFLG_ERR_ARG_INVALID;
     }
