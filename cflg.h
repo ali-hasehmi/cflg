@@ -122,7 +122,7 @@
  *       #define cflg_flgset_duration(flgset, var, opt, opt_long, arg, desc) \
  *         cflg_new_flag(flgset, parse_duration, var, opt, opt_long, arg, desc)
  *       #endif
- *      // parse_duration implementation... 
+ *      // parse_duration implementation...
  *      // it is same as the above example...
  *      // ...
  *      // ...
@@ -139,6 +139,37 @@
  *
  *     This method is ideal for libraries or large projects needing consistent custom
  *     types across multiple files.
+ *
+ *
+ * API Reference
+ * -------------
+ *
+ *   Data Types
+ *   ----------
+ *     - cflg_flgset_t: Main flag set structure containing flags, positionals, and state.
+ *       Fields: prog_name, narg, args, flags (linked list).
+ *     - cflg_flg_t: Individual flag definition (name, name_long, parser, dest, usage).
+ *     - cflg_parser_context_t: Context passed to custom parsers (opt, arg, dest, state).
+ *     - cflg_usage_t: Function pointer for custom help handlers (void (*)(cflg_flgset_t*)).
+ *
+ *   Core Functions and Macros
+ *   -------------------------
+ *    Default Flag Definition Macros (bind flags to variables):
+ *     - cflg_flgset_bool(fset, &var, 'b', "bool", "Usage"): Boolean flag.
+ *     - cflg_flgset_int(fset, &var, 'i', "int", "<NUM>", "Usage"): Signed int.
+ *     - cflg_flgset_int64(fset, &var, 'I', "int64", "<NUM>", "Usage"): 64-bit signed int.
+ *     - cflg_flgset_uint(fset, &var, 'u', "uint", "<NUM>", "Usage"): Unsigned int.
+ *     - cflg_flgset_uint64(fset, &var, 'U', "uint64", "<NUM>", "Usage"): 64-bit unsigned int.
+ *     - cflg_flgset_float(fset, &var, 'f', "float", "<VAL>", "Usage"): Float.
+ *     - cflg_flgset_double(fset, &var, 'd', "double", "<VAL>", "Usage"): Double.
+ *     - cflg_flgset_string(fset, &var, 's', "string", "<STR>", "Usage"): String.
+ *     - cflg_flgset_func(fset, &var, 'x', "custom", "<ARG>", "Usage", parser_func): Custom parser.
+ *     - cflg_new_flag(fset, parser_func, &var, opt, opt_long, arg, Usage): Low-level flag creation.
+ *
+ *   Core Functions
+ *   --------------
+ *     - void cflg_flgset_parse(cflg_flgset_t *fset, int argc, char **argv): Parse arguments.
+ *     - void cflg_print_flags(cflg_flg_t *flags): Print flags with alignment.
  *
  * Return Codes (from cflg_parser_t):
  * -------------
@@ -191,10 +222,12 @@
 #define flgset_float     cflg_flgset_float
 #define flgset_double    cflg_flgset_double
 #define flgset_func      cflg_flgset_func
+#define print_flags      cflg_print_flags
 #define OK               CFLG_OK
 #define OK_NO_ARG        CFLG_OK_NO_ARG
 #define ERR_ARG_NEEDED   CFLG_ERR_ARG_NEEDED
 #define ERR_ARG_INVALID  CFLG_ERR_ARG_INVALID
+#define ERR_ARG_FORCED   CFLG_ERR_ARG_FORCED
 #endif
 
 // stores the state of each command-line option while parsing
@@ -234,14 +267,14 @@ typedef int (*cflg_parser_t)(cflg_parser_context_t *);
 
 typedef struct cflg_flg cflg_flg_t;
 struct cflg_flg {
-    cflg_parser_t parser;
-    void         *dest;
-    const char   *usage;
-    const char   *arg_name;
-    const char   *name_long;
-    char          name;
-    bool          has_seen;
-    cflg_flg_t   *next;
+    cflg_parser_t parser;    // parser binded with this flag
+    void         *dest;      // memory region binded with this flag
+    const char   *usage;     // usage message, use in printing
+    const char   *arg_name;  // argument's name if need any
+    const char   *name_long; // long option (e.g. '--verbose')
+    char          name;      // short option (e.g. '-v')
+    bool          has_seen;  // reports whether its parser has been called before
+    cflg_flg_t   *next;      // points to the next flag in the linked-list
 };
 
 typedef struct cflg_flgset cflg_flgset_t;
@@ -251,12 +284,13 @@ typedef struct cflg_flgset cflg_flgset_t;
 typedef void (*cflg_usage_t)(cflg_flgset_t *);
 
 struct cflg_flgset {
-    bool         parsed;
+    bool         parsed;    // prevents parsing, if true
     int          narg;      // Number of non-flag arguments in args, including argv[0]
     char       **args;      // Pointer to argv used for parsing
     const char  *prog_name; // name of the program
-    cflg_flg_t  *flgs;
-    cflg_usage_t usage; // if not specified, falls back to default usage function (see cflg_print_help_)
+    cflg_flg_t  *flgs;      // pointer to the head of the flags list
+    cflg_usage_t usage;     // if not specified, falls back to default usage function
+                            // (see cflg_print_help_)
 };
 
 #define CFLG_FALLBACK(s, def) ((s) ? (s) : (def))

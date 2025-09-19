@@ -74,5 +74,3 @@ Check the `examples` folder for real-world demos.
 - **Custom Parsers**: Use `cflg_flgset_func` for custom types (see `cflg.h` for details).
 - **Portability**: Works on any C99+ compiler, no dependencies.
 
-## License
-GPL-3.0 License (see `LICENSE` file).
