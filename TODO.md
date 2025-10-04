@@ -7,7 +7,7 @@
 - [ ] Add a mechansim for flags to have aliases
 - [x] flgset_parse uses malloc for storing non-flag args, use something else instead
 - [x] Print the list of matching options in the case of ambiguity
-- [ ] Add a function to print flags by lexographical order
+- [x] Add a function to print flags by lexographical order
 
 ## Bugs:
 - [x] Program doesn't differentiate between '-h' and "--h"

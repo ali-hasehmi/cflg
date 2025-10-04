@@ -14,8 +14,10 @@ void ping_usage(flgset_t *fs) {
   printf("Usage\n");
   printf("  %s [options...] <destination>\n\n", fs->prog_name);
   printf("Options:\n");
+  cflg_sort_flags(&fs->flgs);
   cflg_print_flags(fs->flgs);
 }
+
 int main(int argc, char *argv[]) {
   // --- Variable Definitions (Grouped by Type) ---
   // Booleans

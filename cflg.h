@@ -354,6 +354,9 @@ int cflg_parse_string(cflg_parser_context_t *ctx);
 // expose the defualt print flags function
 void cflg_print_flags(cflg_flg_t *flags);
 
+// sorts flag list lexicographically and updates the head 
+void cflg_sort_flags(cflg_flg_t **flg_head);
+
 //
 // ******                        ******
 // ******                        ******
@@ -363,6 +366,7 @@ void cflg_print_flags(cflg_flg_t *flags);
 //
 #endif // CFLG_H_INCLUDE
 
+#define CFLG_IMPLEMENTATION
 #ifdef CFLG_IMPLEMENTATION
 //
 // ******                                  ******
@@ -389,7 +393,7 @@ void cflg_print_flags(cflg_flg_t *flags);
 
 #define CFLG_STRLEN(s)          ((s) ? (strlen(s)) : (0))
 #define CFLG_ISEMPTY(s)         (((s) == NULL) || (*(s) == '\0'))
-#define CFLG_STRNCMP(s1, s2, n) ((s1 && s2) ? (strncmp(s1, s2, n)) : (-1))
+#define CFLG_STRNCMP(s1, s2, n) (((s1) && (s2)) ? (strncmp((s1), (s2), (n))) : (-1))
 
 // checks wheter the provided string has the structure of a flag or not
 #define CFLG_IS_NONFLG(s) (CFLG_ISEMPTY((s)) || (s)[0] != '-' || (s)[1] == '\0')
@@ -405,6 +409,8 @@ void cflg_print_err(int err_code, cflg_flgset_t *fs, cflg_parser_context_t *ctx)
 // prints usage string and all flag names (short and long)
 void cflg_print_help_(cflg_flgset_t *fset) {
     printf("Usage: %s [OPTION]... [COMMAND]...\n\n", fset->prog_name);
+    printf("default flag\n");
+    cflg_sort_flags(&fset->flgs);
     cflg_print_flags(fset->flgs);
 }
 
@@ -666,6 +672,7 @@ int cflg_flgset_parse(cflg_flgset_t *fset, int argc, char *argv[]) {
     // remove help flag, because after returning from this function
     // it will be deallocated
     fset->flgs   = fset->flgs->next;
+
     fset->narg   = last_nonopt + 1;
     fset->parsed = true;
 
@@ -777,6 +784,76 @@ int cflg_parse_string(cflg_parser_context_t *ctx) {
     }
     *(char **) ctx->dest = (char *) ctx->arg;
     return CFLG_OK;
+}
+
+// compares two flags
+// returns:
+//  0 if equal
+// <0 if a < b
+// >0 if a > b
+int cflg_cmp_flgs(cflg_flg_t *a, cflg_flg_t *b) {
+
+    const char *name_a,
+               *name_b;
+    int name_a_size,
+        name_b_size;
+
+    if (a->name_long) {
+        name_a = a->name_long;
+        name_a_size = CFLG_STRLEN(name_a);
+    } else {
+        name_a = &a->name;
+        name_a_size = 1;
+    }
+
+    if (b->name_long) {
+        name_b = b->name_long;
+        name_b_size = CFLG_STRLEN(name_b);
+    } else {
+        name_b = &b->name;
+        name_b_size = 1;
+    }
+
+    int cmp = strncmp(name_a, name_b, ( (name_a_size > name_b_size) ? name_b_size : name_a_size) );
+    if (cmp == 0) {
+        cmp = a->name - b->name;
+    }
+    return cmp;
+}
+
+// sorts flag list lexicographically and updates the head 
+void cflg_sort_flags(cflg_flg_t **flg_head) {
+    // this function sorts flags using insertion sort
+    
+    // create a dummy flag node to avoid edge cases of changing the head
+    cflg_flg_t *dummy = &(cflg_flg_t) {.next = *flg_head},
+    // prev always points to the end of the sorted list
+               *prev  = *flg_head,
+    // curr always points to the start of the unsorted list
+               *curr  = (*flg_head)->next;
+
+    while (curr) {
+        // if current is already in the correct location 
+        if (cflg_cmp_flgs(curr,prev) > 0) {
+            prev = curr;
+            curr = curr->next;
+            continue;
+        }
+
+        // otherwise find its correct location
+        cflg_flg_t *tmp = dummy;
+        while(cflg_cmp_flgs(curr, tmp->next) > 0) {
+                tmp = tmp->next;
+        }
+        
+        prev->next = curr->next;
+        curr->next = tmp->next;
+        tmp->next  = curr;
+        curr = prev->next;
+    }
+
+    // update the head to the new head
+    *flg_head = dummy->next;
 }
 
 void cflg_print_flags(cflg_flg_t *flags) {
