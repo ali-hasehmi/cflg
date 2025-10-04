@@ -366,7 +366,6 @@ void cflg_sort_flags(cflg_flg_t **flg_head);
 //
 #endif // CFLG_H_INCLUDE
 
-#define CFLG_IMPLEMENTATION
 #ifdef CFLG_IMPLEMENTATION
 //
 // ******                                  ******

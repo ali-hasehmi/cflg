@@ -5,6 +5,7 @@ cflg is a single-header [stb-style](https://github.com/nothings/stb/blob/master/
 - **No malloc:** All parsing happens on the stack.
 - **Direct binding:** Flags map to your variables (bool, int, string, etc.).
 - **Automatic `--help`:** Generates a help message from flag definitions.
+- **sorting flags:** Sorts flags lexicographically while Generating help message.
 - **Aggregated short options:** Supports `-vqc` as `-v -q -c`.
 - **Long option completion:** Accepts partial matches (e.g., `--he` for `--help` if unambiguous).
 - **Custom parsers:** Support complex types (e.g., `--memory=512m`).
