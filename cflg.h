@@ -366,6 +366,7 @@ void cflg_sort_flags(cflg_flg_t **flg_head);
 //
 #endif // CFLG_H_INCLUDE
 
+
 #ifdef CFLG_IMPLEMENTATION
 //
 // ******                                  ******
@@ -408,7 +409,6 @@ void cflg_print_err(int err_code, cflg_flgset_t *fs, cflg_parser_context_t *ctx)
 // prints usage string and all flag names (short and long)
 void cflg_print_help_(cflg_flgset_t *fset) {
     printf("Usage: %s [OPTION]... [COMMAND]...\n\n", fset->prog_name);
-    printf("default flag\n");
     cflg_sort_flags(&fset->flgs);
     cflg_print_flags(fset->flgs);
 }
@@ -785,39 +785,51 @@ int cflg_parse_string(cflg_parser_context_t *ctx) {
     return CFLG_OK;
 }
 
+// Helper function which converts c to lower case if it's uppercase
+// otherwise returns c itself 
+int cflg_tolower(int c) {
+    if ( c >= 'A' && c <= 'Z') {
+        return c + 'a' - 'A';
+    }
+    return c;
+}
+
 // compares two flags
 // returns:
-//  0 if equal
+//  0 if equal => which is actually a bad situation
 // <0 if a < b
 // >0 if a > b
+// on a correctly-defined flag list, no two flags should be equal
+// calling this function with a->name = a->name_long = b->name = b->name_long = 0
+// casues panic and segmentation fault so don't do it
 int cflg_cmp_flgs(cflg_flg_t *a, cflg_flg_t *b) {
+    
+    // Determine the primary sort character for each flag.
+    // Use the short option if it exists, otherwise the first letter of the long option.
+    char key_a = CFLG_FALLBACK(a->name, a->name_long[0]);
+    char key_b = CFLG_FALLBACK(b->name, b->name_long[0]);
 
-    const char *name_a,
-               *name_b;
-    int name_a_size,
-        name_b_size;
-
-    if (a->name_long) {
-        name_a = a->name_long;
-        name_a_size = CFLG_STRLEN(name_a);
-    } else {
-        name_a = &a->name;
-        name_a_size = 1;
+    // 1. Primary comparison: case-insensitive
+    int diff = cflg_tolower(key_a) - cflg_tolower(key_b);
+    if (diff != 0) {
+        return diff;
     }
 
-    if (b->name_long) {
-        name_b = b->name_long;
-        name_b_size = CFLG_STRLEN(name_b);
-    } else {
-        name_b = &b->name;
-        name_b_size = 1;
+    // 2. Tie-breaker 1: case-sensitive (for -a vs -A)
+    diff = key_a - key_b;
+    if (diff != 0) {
+        return -diff; // first print -a then -A
     }
 
-    int cmp = strncmp(name_a, name_b, ( (name_a_size > name_b_size) ? name_b_size : name_a_size) );
-    if (cmp == 0) {
-        cmp = a->name - b->name;
+    // 3. Tie-breaker 2: full long option name (for -c vs --color)
+    // A flag with no long option should come before one that has one.
+    if (a->name_long == NULL && b->name_long != NULL) return -1;
+    if (a->name_long != NULL && b->name_long == NULL) return 1;
+    if (a->name_long != NULL && b->name_long != NULL) {
+        return strcmp(a->name_long, b->name_long);
     }
-    return cmp;
+
+    return 0; // Flags are identical(this is bad)
 }
 
 // sorts flag list lexicographically and updates the head 
